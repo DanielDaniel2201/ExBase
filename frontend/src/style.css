@@ -1,9 +1,32 @@
+:root { color: #202124; background: #fff; font-family: system-ui, sans-serif; }
 * { box-sizing: border-box; }
-html, body, #root { width: 100%; height: 100%; margin: 0; font-family: system-ui, sans-serif; }
-button { padding: 8px 18px; border: 1px solid #ccc; border-radius: 6px; background: white; cursor: pointer; }
-.empty { height: 100%; display: grid; place-content: center; text-align: center; gap: 8px; }
-.editor { height: 100%; display: grid; grid-template-rows: 48px 1fr; }
-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #ddd; }
-header span { min-width: 0; margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-header small { min-width: 42px; color: #666; }
-section { min-height: 0; }
+html, body, #root { width: 100%; height: 100%; margin: 0; }
+button { font: inherit; }
+.welcome { height: 100%; display: grid; place-content: center; justify-items: center; gap: 12px; color: #555; }
+.welcome h1, .welcome p { margin: 0; }
+.welcome button { padding: 9px 18px; border: 1px solid #bbb; border-radius: 6px; background: #fff; cursor: pointer; }
+.workspace { height: 100%; display: grid; grid-template-columns: 240px minmax(0, 1fr); }
+aside { min-width: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: #f7f7f8; border-right: 1px solid #ddd; }
+.workspace-picker { position: relative; min-width: 0; height: 42px; padding: 6px 8px 6px 0; border-bottom: 1px solid #ddd; }
+.workspace-picker summary { width: fit-content; max-width: 100%; height: 29px; display: flex; align-items: center; gap: 7px; padding: 0 6px 0 10px; border-radius: 5px; cursor: pointer; list-style: none; }
+.workspace-picker summary::-webkit-details-marker { display: none; }
+.workspace-picker summary:hover { background: #ececee; box-shadow: 0 1px 5px #0002; }
+.tree-row:hover { background: #e8e8ea; }
+.workspace-picker summary strong { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.workspace-menu { position: absolute; z-index: 20; top: 38px; left: 8px; width: 224px; max-height: 360px; overflow: auto; padding: 5px; border: 1px solid #ccc; border-radius: 7px; background: #f7f7f8; box-shadow: 0 8px 24px #0002; font-size: 13px; }
+.workspace-menu button { width: 100%; display: grid; gap: 2px; padding: 7px 9px; border: 0; border-radius: 4px; background: transparent; text-align: left; cursor: pointer; }
+.workspace-menu button:hover, .workspace-menu button.current { background: #e5e5e7; }
+.workspace-menu button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-menu hr { margin: 5px 3px; border: 0; border-top: 1px solid #ddd; }
+nav { overflow: auto; padding: 6px 0; }
+.tree { margin: 0; padding: 0 0 0 14px; list-style: none; }
+nav > .tree { padding-left: 8px; }
+.tree-row { width: 100%; height: 28px; display: flex; align-items: center; gap: 5px; padding: 0 8px 0 2px; border: 0; border-radius: 3px; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+.tree-row.active { background: #e2e2e4; }
+.folder-icon, .file-icon { width: 16px; height: 16px; flex: 0 0 16px; color: #666; }
+.tree-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.empty-tree { padding: 4px 0 4px 18px; color: #999; font-size: 12px; }
+aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #777; text-overflow: ellipsis; white-space: nowrap; border-top: 1px solid #ddd; }
+.error { color: #b3261e !important; }
+.canvas { min-width: 0; min-height: 0; }
+.blank { height: 100%; display: grid; place-content: center; color: #888; }
