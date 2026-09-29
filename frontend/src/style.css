@@ -7,8 +7,8 @@ button { font: inherit; }
 .welcome h1, .welcome p { margin: 0; }
 .welcome button { padding: 9px 18px; border: 1px solid #bbb; border-radius: 6px; background: #fff; cursor: pointer; }
 .workspace { height: 100%; display: grid; grid-template: 42px minmax(0, 1fr) / 240px minmax(0, 1fr); }
-aside { min-width: 0; grid-row: 1 / 3; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: #f7f7f8; border-right: 1px solid #ddd; }
-.titlebar { min-width: 0; display: flex; justify-content: flex-end; background: #fff; border-bottom: 1px solid #ddd; --wails-draggable: drag; }
+aside { min-width: 0; grid-row: 1 / 3; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: #f7f7f8; }
+.titlebar { min-width: 0; display: flex; justify-content: flex-end; background: #f7f7f8; border-bottom: 1px solid #ddd; --wails-draggable: drag; }
 .window-controls { height: 100%; display: flex; --wails-draggable: no-drag; }
 .window-controls button { position: relative; width: 46px; height: 100%; padding: 0; border: 0; background: transparent; color: #222; cursor: default; }
 .window-controls button:hover { background: #e8e8e8; }
@@ -30,7 +30,7 @@ aside { min-width: 0; grid-row: 1 / 3; display: grid; grid-template-rows: auto m
 .workspace-menu button:hover, .workspace-menu button.current { background: #e5e5e7; }
 .workspace-menu button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-menu hr { margin: 5px 3px; border: 0; border-top: 1px solid #ddd; }
-nav { overflow: auto; padding: 6px 0; }
+nav { overflow: auto; padding: 6px 0; border-right: 1px solid #ddd; }
 .tree { margin: 0; padding: 0 0 0 14px; list-style: none; }
 nav > .tree { padding-left: 8px; }
 .tree-row { width: 100%; height: 28px; display: flex; align-items: center; gap: 5px; padding: 0 8px 0 2px; border: 0; border-radius: 3px; color: inherit; background: transparent; text-align: left; cursor: pointer; }
@@ -38,7 +38,7 @@ nav > .tree { padding-left: 8px; }
 .folder-icon, .file-icon { width: 16px; height: 16px; flex: 0 0 16px; color: #666; }
 .tree-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .empty-tree { padding: 4px 0 4px 18px; color: #999; font-size: 12px; }
-aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #777; text-overflow: ellipsis; white-space: nowrap; border-top: 1px solid #ddd; }
+aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #777; text-overflow: ellipsis; white-space: nowrap; border-top: 1px solid #ddd; border-right: 1px solid #ddd; }
 .error { color: #b3261e !important; }
 .canvas { min-width: 0; min-height: 0; grid-column: 2; grid-row: 2; }
 .blank { height: 100%; display: grid; place-content: center; color: #888; }
