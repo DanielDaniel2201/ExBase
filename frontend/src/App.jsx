@@ -3,6 +3,7 @@ import { Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
 import {
   ChooseFolder, OpenDocument, ReadDirectory, Save, SwitchFolder, Workspaces,
 } from "../wailsjs/go/main/App";
+import { Quit, WindowMinimise, WindowToggleMaximise } from "../wailsjs/runtime/runtime";
 import { parseScene } from "./scene";
 
 function basename(path) {
@@ -82,6 +83,16 @@ function TreeNode({ entry, activePath, onOpen, onError }) {
 function FileTree(props) {
   if (!props.entries.length) return <ul className="tree empty-tree"><li>Empty</li></ul>;
   return <ul className="tree">{props.entries.map((entry) => <TreeNode key={entry.path} entry={entry} {...props} />)}</ul>;
+}
+
+function Titlebar() {
+  return <header className="titlebar" onDoubleClick={WindowToggleMaximise}>
+    <div className="window-controls" onDoubleClick={(event) => event.stopPropagation()}>
+      <button type="button" onClick={WindowMinimise} aria-label="Minimise"><span className="minimise-icon" /></button>
+      <button type="button" onClick={WindowToggleMaximise} aria-label="Maximise"><span className="maximise-icon" /></button>
+      <button type="button" className="close-button" onClick={Quit} aria-label="Close"><span className="close-icon" /></button>
+    </div>
+  </header>;
 }
 
 export default function App() {
@@ -179,11 +190,14 @@ export default function App() {
     }, 600);
   }
 
-  if (!workspace) return <main className="welcome">
-    <h1>ExBase</h1>
-    <p>Open a folder containing Excalidraw files.</p>
-    <button onClick={chooseFolder}>Open Folder</button>
-    {status && <p className="error">{status}</p>}
+  if (!workspace) return <main className="welcome-shell">
+    <Titlebar />
+    <div className="welcome">
+      <h1>ExBase</h1>
+      <p>Open a folder containing Excalidraw files.</p>
+      <button onClick={chooseFolder}>Open Folder</button>
+      {status && <p className="error">{status}</p>}
+    </div>
   </main>;
 
   return <main className="workspace">
@@ -210,6 +224,7 @@ export default function App() {
       </nav>
       {status && <small className={status === "Saved" || status === "Saving..." ? "" : "error"}>{status}</small>}
     </aside>
+    <Titlebar />
     <section className="canvas">
       {doc
         ? <Excalidraw key={doc.path} initialData={doc.scene} excalidrawAPI={setApi} onChange={autosave} />
