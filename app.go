@@ -9,14 +9,17 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
-	ctx     context.Context
-	root    string
-	folders []string
+	ctx      context.Context
+	root     string
+	folders  []string
+	aiMu     sync.Mutex
+	aiCancel context.CancelFunc
 }
 
 type Document struct {

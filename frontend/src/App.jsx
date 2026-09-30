@@ -5,6 +5,7 @@ import {
 } from "../wailsjs/go/main/App";
 import { Quit, WindowMinimise, WindowToggleMaximise } from "../wailsjs/runtime/runtime";
 import { parseScene } from "./scene";
+import { CanvasChat, SettingsIcon, SettingsModal } from "./AI";
 
 function basename(path) {
   return path.split(/[\\/]/).pop();
@@ -190,6 +191,7 @@ export default function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [revealPath, setRevealPath] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const picker = useRef();
   const autosaveTimer = useRef();
   const lastSaved = useRef("");
@@ -404,8 +406,13 @@ export default function App() {
     </details>;
   }
 
+  function settingsButton() {
+    return <button type="button" className="sidebar-toggle settings-button" onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Settings"><SettingsIcon /></button>;
+  }
+
   if (!workspace) return <main className="welcome-shell">
-    <Titlebar />
+    <Titlebar>{settingsButton()}</Titlebar>
+    {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     <div className="welcome">
       <h1>ExBase</h1>
       <p>Open a folder containing Excalidraw files.</p>
@@ -418,6 +425,7 @@ export default function App() {
     {sidebarOpen && <aside>
       <div className="sidebar-header">
         {renderWorkspacePicker()}
+        {settingsButton()}
         <button className="sidebar-toggle" onClick={() => setSidebarOpen(false)} title="Collapse sidebar" aria-label="Collapse sidebar">
           <PanelLeftIcon />
         </button>
@@ -462,6 +470,7 @@ export default function App() {
     <Titlebar>
       {!sidebarOpen && <div className="titlebar-workspace" onDoubleClick={(event) => event.stopPropagation()}>
         {renderWorkspacePicker()}
+        {settingsButton()}
         <button className="sidebar-toggle" onClick={() => setSidebarOpen(true)} title="Expand sidebar" aria-label="Expand sidebar">
           <PanelLeftIcon open />
         </button>
@@ -471,6 +480,8 @@ export default function App() {
       {doc
         ? <Excalidraw key={doc.path} initialData={doc.scene} excalidrawAPI={setApi} onChange={autosave} />
         : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an <PencilRulerIcon /> Excalidraw file from the sidebar.<br />Or double-click to create a new one.</p></div>}
+      {doc && <CanvasChat key={doc.path} doc={doc} api={api} onSettings={() => setSettingsOpen(true)} />}
     </section>
+    {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
   </main>;
 }
