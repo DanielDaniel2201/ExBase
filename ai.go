@@ -378,7 +378,7 @@ func (a *App) AskAI(path, scene, checkpoint, prompt, screenshot string, history 
 	}
 	tools = append(tools,
 		map[string]any{"type": "function", "function": map[string]any{"name": "draw_mermaid", "description": "Create or replace an editable flowchart using Mermaid. For replacement, first read_canvas and supply the active diagramId; omit it only to create a new diagram. Returns current canvas state for further native drawing in the same turn.", "parameters": json.RawMessage(`{"type":"object","properties":{"source":{"type":"string","maxLength":16000},"diagramId":{"type":"string"},"x":{"type":"number"},"y":{"type":"number"}},"required":["source"],"additionalProperties":false}`)}},
-		map[string]any{"type": "function", "function": map[string]any{"name": "read_canvas", "description": "Inspect current elements and managed diagram IDs. Supply diagramId to read its current Mermaid source and elements. Detached source is never returned.", "parameters": json.RawMessage(`{"type":"object","properties":{"diagramId":{"type":"string"}},"additionalProperties":false}`)}},
+		map[string]any{"type": "function", "function": map[string]any{"name": "read_canvas", "description": "Inspect current elements and managed diagram IDs. Supply diagramId to read its current Mermaid source and elements. Detached source is never returned. If nextOffset is returned, pass it as offset to read more elements.", "parameters": json.RawMessage(`{"type":"object","properties":{"diagramId":{"type":"string"},"offset":{"type":"integer","minimum":0}},"additionalProperties":false}`)}},
 	)
 	messages := []map[string]any{{"role": "system", "content": canvasPrompt(checkpoint, current.Elements)}}
 	if len(history) > 12 {

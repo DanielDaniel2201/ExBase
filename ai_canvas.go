@@ -93,7 +93,7 @@ func (a *App) compileCanvas(ctx context.Context, request AICanvasRequest) ([]map
 }
 
 func canvasIndex(elements []map[string]any) []map[string]any {
-	// ponytail: bounded overview; read_canvas supplies the complete target diagram when needed.
+	// ponytail: bounded overview; read_canvas pages through larger canvases when needed.
 	index := []map[string]any{}
 	bytes := 0
 	for _, el := range elements {
@@ -130,15 +130,23 @@ func mermaidData(element map[string]any) map[string]any {
 
 func diagramIndex(elements []map[string]any) []map[string]any {
 	index := []map[string]any{}
-	seen := map[string]bool{}
+	seen := map[string]map[string]any{}
 	for _, element := range elements {
 		data := mermaidData(element)
 		id, _ := data["id"].(string)
-		if id == "" || seen[id] {
+		if id == "" {
 			continue
 		}
-		seen[id] = true
-		index = append(index, map[string]any{"id": id, "active": data["active"] == true})
+		if summary := seen[id]; summary != nil {
+			summary["elementCount"] = summary["elementCount"].(int) + 1
+			if text, ok := element["text"].(string); ok && summary["label"] == nil {
+				summary["label"] = text
+			}
+			continue
+		}
+		summary := map[string]any{"id": id, "active": data["active"] == true, "x": element["x"], "y": element["y"], "elementCount": 1}
+		seen[id] = summary
+		index = append(index, summary)
 	}
 	return index
 }
@@ -146,8 +154,7 @@ func diagramIndex(elements []map[string]any) []map[string]any {
 func readCanvas(elements []map[string]any, args map[string]any) string {
 	id, _ := args["diagramId"].(string)
 	if id == "" {
-		data, _ := json.Marshal(map[string]any{"diagrams": diagramIndex(elements), "elements": canvasIndex(elements)})
-		return string(data)
+		return canvasPage(elements, args, map[string]any{"diagrams": diagramIndex(elements)})
 	}
 	selected := []map[string]any{}
 	var record map[string]any
@@ -164,9 +171,25 @@ func readCanvas(elements []map[string]any, args map[string]any) string {
 	if len(selected) == 0 {
 		return "Error: diagram not found; read the current canvas"
 	}
-	result := map[string]any{"diagramId": id, "active": record["active"] == true, "elements": canvasIndex(selected)}
+	result := map[string]any{"diagramId": id, "active": record["active"] == true}
 	if record["active"] == true {
 		result["source"] = record["source"]
+	}
+	return canvasPage(selected, args, result)
+}
+
+func canvasPage(elements []map[string]any, args map[string]any, result map[string]any) string {
+	offset := 0
+	if value, ok := args["offset"].(float64); ok {
+		if value < 0 || value > float64(len(elements)) || math.Trunc(value) != value {
+			return "Error: invalid canvas offset"
+		}
+		offset = int(value)
+	}
+	index := canvasIndex(elements[offset:])
+	result["elements"], result["elementCount"] = index, len(elements)
+	if offset+len(index) < len(elements) {
+		result["nextOffset"] = offset + len(index)
 	}
 	data, _ := json.Marshal(result)
 	return string(data)

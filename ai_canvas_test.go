@@ -40,6 +40,29 @@ func TestCanvasBridge(t *testing.T) {
 	}
 }
 
+func TestCanvasInspectionPages(t *testing.T) {
+	elements := make([]map[string]any, 300)
+	for i := range elements {
+		elements[i] = map[string]any{"id": i, "type": "rectangle", "x": i, "y": 0}
+	}
+	var page map[string]any
+	if err := json.Unmarshal([]byte(readCanvas(elements, nil)), &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page["elements"].([]any)) != 250 || page["nextOffset"] != float64(250) {
+		t.Fatal("overview did not expose remaining elements")
+	}
+	if err := json.Unmarshal([]byte(readCanvas(elements, map[string]any{"offset": float64(250)})), &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page["elements"].([]any)) != 50 {
+		t.Fatal("second page lost elements")
+	}
+	if !strings.HasPrefix(readCanvas(elements, map[string]any{"offset": float64(-1)}), "Error:") {
+		t.Fatal("negative offset accepted")
+	}
+}
+
 func TestAgentMixesManagedAndNativeTools(t *testing.T) {
 	t.Setenv("USERPROFILE", t.TempDir())
 	app := &App{root: t.TempDir()}
