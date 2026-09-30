@@ -17,7 +17,15 @@ export function splitMCPElements(elements) {
     if (typeof element.id !== "string" || !element.id || ids.has(element.id)) throw new Error("Invalid or duplicate MCP element ID");
     if (![element.x, element.y].every(Number.isFinite)) throw new Error("Invalid MCP element position");
     ids.add(element.id);
-    (Number.isFinite(element.version) ? standard : shorthand).push(element);
+    if (Number.isFinite(element.version)) {
+      standard.push(element);
+    } else if (["arrow", "line"].includes(element.type) && element.points != null) {
+      if (!Array.isArray(element.points) || element.points.length < 2 || !element.points.every((point) => Array.isArray(point) && point.length === 2 && point.every(Number.isFinite))) throw new Error("Invalid MCP line points");
+      const [dx, dy] = element.points[0];
+      shorthand.push({ ...element, x: element.x + dx, y: element.y + dy, points: element.points.map(([x, y]) => [x - dx, y - dy]) });
+    } else {
+      shorthand.push(element);
+    }
   }
   return { standard, shorthand };
 }
