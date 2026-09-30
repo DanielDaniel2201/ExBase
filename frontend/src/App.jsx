@@ -53,6 +53,22 @@ function PencilRulerIcon() {
   </svg>;
 }
 
+function PanelLeftIcon({ open }) {
+  return <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <path d="M9 3v18" />
+    <path d={open ? "m14 9 3 3-3 3" : "m16 15-3-3 3-3"} />
+  </svg>;
+}
+
 function RenameInput({ entry, onCommit, onCancel }) {
   const [value, setValue] = useState(entry.name);
   const input = useRef();
@@ -150,8 +166,9 @@ function FileTree(props) {
   return <ul className="tree">{props.entries.map((entry) => <TreeNode key={entry.path} entry={entry} {...props} />)}</ul>;
 }
 
-function Titlebar() {
+function Titlebar({ children }) {
   return <header className="titlebar" onDoubleClick={WindowToggleMaximise}>
+    {children}
     <div className="window-controls" onDoubleClick={(event) => event.stopPropagation()}>
       <button type="button" onClick={WindowMinimise} aria-label="Minimise"><span className="minimise-icon" /></button>
       <button type="button" onClick={WindowToggleMaximise} aria-label="Maximise"><span className="maximise-icon" /></button>
@@ -172,6 +189,7 @@ export default function App() {
   const [editingPath, setEditingPath] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [revealPath, setRevealPath] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const picker = useRef();
   const autosaveTimer = useRef();
   const lastSaved = useRef("");
@@ -366,6 +384,26 @@ export default function App() {
     }, 600);
   }
 
+  function renderWorkspacePicker() {
+    return <details className="workspace-picker" ref={picker}>
+      <summary title={workspace}>
+        <strong>{basename(workspace)}</strong>
+      </summary>
+      <div className="workspace-menu">
+        {folders.map((path) => <button
+          className={path === workspace ? "current" : ""}
+          key={path}
+          onClick={() => switchFolder(path)}
+          title={path}
+        >
+          <span>{basename(path)}</span>
+        </button>)}
+        <hr />
+        <button onClick={chooseFolder}>Open Another Folder</button>
+      </div>
+    </details>;
+  }
+
   if (!workspace) return <main className="welcome-shell">
     <Titlebar />
     <div className="welcome">
@@ -376,25 +414,14 @@ export default function App() {
     </div>
   </main>;
 
-  return <main className="workspace">
-    <aside>
-      <details className="workspace-picker" ref={picker}>
-        <summary title={workspace}>
-          <strong>{basename(workspace)}</strong>
-        </summary>
-        <div className="workspace-menu">
-          {folders.map((path) => <button
-            className={path === workspace ? "current" : ""}
-            key={path}
-            onClick={() => switchFolder(path)}
-            title={path}
-          >
-            <span>{basename(path)}</span>
-          </button>)}
-          <hr />
-          <button onClick={chooseFolder}>Open Another Folder</button>
-        </div>
-      </details>
+  return <main className={`workspace ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
+    {sidebarOpen && <aside>
+      <div className="sidebar-header">
+        {renderWorkspacePicker()}
+        <button className="sidebar-toggle" onClick={() => setSidebarOpen(false)} title="Collapse sidebar" aria-label="Collapse sidebar">
+          <PanelLeftIcon />
+        </button>
+      </div>
       <nav aria-label="Excalidraw files" onContextMenu={(event) => showContextMenu(event)} onKeyDown={handleTreeKeyDown}>
         <FileTree
           entries={entries}
@@ -431,12 +458,19 @@ export default function App() {
             </>}
       </div>}
       {status && <small className={status === "Saved" || status === "Saving..." ? "" : "error"}>{status}</small>}
-    </aside>
-    <Titlebar />
+    </aside>}
+    <Titlebar>
+      {!sidebarOpen && <div className="titlebar-workspace" onDoubleClick={(event) => event.stopPropagation()}>
+        {renderWorkspacePicker()}
+        <button className="sidebar-toggle" onClick={() => setSidebarOpen(true)} title="Expand sidebar" aria-label="Expand sidebar">
+          <PanelLeftIcon open />
+        </button>
+      </div>}
+    </Titlebar>
     <section className="canvas">
       {doc
         ? <Excalidraw key={doc.path} initialData={doc.scene} excalidrawAPI={setApi} onChange={autosave} />
-        : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an Excalidraw file from the sidebar.<br />Or double-click to create a new one.</p></div>}
+        : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an <PencilRulerIcon /> Excalidraw file from the sidebar.<br />Or double-click to create a new one.</p></div>}
     </section>
   </main>;
 }
