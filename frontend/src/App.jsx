@@ -180,6 +180,7 @@ export default function App() {
     Workspaces().then((state) => state.current && applyWorkspace(state)).catch((error) => setStatus(String(error)));
     function closePicker(event) {
       if (picker.current?.open && !picker.current.contains(event.target)) picker.current.open = false;
+      if (event.button === 0 && !event.target.closest(".tree-row, .context-menu")) setSelectedEntry(null);
       setContextMenu(null);
     }
     document.addEventListener("pointerdown", closePicker);
@@ -304,7 +305,7 @@ export default function App() {
   function showContextMenu(event, entry = null) {
     event.preventDefault();
     event.stopPropagation();
-    if (entry) setSelectedEntry(entry);
+    setSelectedEntry(entry);
     setContextMenu({
       x: Math.min(event.clientX, window.innerWidth - 190),
       y: Math.min(event.clientY, window.innerHeight - 140),
