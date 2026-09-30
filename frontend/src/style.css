@@ -25,13 +25,13 @@ aside { min-width: 0; grid-row: 1 / 3; display: grid; grid-template-rows: auto m
 .workspace-picker summary:hover { background: #ececee; box-shadow: 0 1px 5px rgb(0 0 0 / 13%); }
 .tree-row:hover { background: #e8e8ea; }
 .workspace-picker summary strong { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.workspace-menu { position: absolute; z-index: 20; top: 38px; left: 8px; width: 224px; max-height: 360px; overflow: auto; padding: 5px; border: 1px solid #ccc; border-radius: 7px; background: #f7f7f8; box-shadow: 0 8px 24px #0002; font-size: 13px; }
-.workspace-menu button { width: 100%; display: grid; gap: 2px; padding: 7px 9px; border: 0; border-radius: 4px; background: transparent; text-align: left; cursor: pointer; }
+.workspace-menu { position: absolute; z-index: 20; top: 38px; left: 8px; width: max-content; max-width: calc(100vw - 16px); max-height: 360px; overflow: auto; padding: 4px; border: 1px solid #ccc; border-radius: 7px; background: #f7f7f8; box-shadow: 0 8px 24px #0002; font-size: 13px; }
+.workspace-menu button { width: 100%; display: grid; gap: 2px; padding: 5px 7px; border: 0; border-radius: 4px; background: transparent; text-align: left; cursor: pointer; }
 .workspace-menu button:hover, .workspace-menu button.current { background: #e5e5e7; }
 .workspace-menu button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-menu hr { margin: 5px 3px; border: 0; border-top: 1px solid #ddd; }
-.context-menu { position: fixed; z-index: 30; width: 180px; padding: 5px; border: 1px solid #ccc; border-radius: 7px; background: #fff; box-shadow: 0 8px 24px #0003; font-size: 13px; }
-.context-menu button { width: 100%; padding: 7px 9px; border: 0; border-radius: 4px; background: transparent; text-align: left; cursor: pointer; }
+.context-menu { position: fixed; z-index: 30; width: 180px; padding: 4px; border: 1px solid #ccc; border-radius: 7px; background: #f7f7f8; box-shadow: 0 8px 24px #0003; font-size: 13px; }
+.context-menu button { width: 100%; padding: 5px 7px; border: 0; border-radius: 4px; background: transparent; text-align: left; cursor: pointer; }
 .context-menu button:hover { background: #e8e8ea; }
 nav { overflow: auto; padding: 6px 0; border-right: 1px solid #ddd; }
 .tree { margin: 0; padding: 0 0 0 14px; list-style: none; }
@@ -47,4 +47,5 @@ nav > .tree { padding-left: 8px; }
 aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #777; text-overflow: ellipsis; white-space: nowrap; border-top: 1px solid #ddd; border-right: 1px solid #ddd; }
 .error { color: #b3261e !important; }
 .canvas { min-width: 0; min-height: 0; grid-column: 2; grid-row: 2; }
-.blank { height: 100%; display: grid; place-content: center; color: #888; }
+.blank { height: 100%; display: grid; place-content: center; color: #888; text-align: center; }
+.blank p { line-height: 1.5; }

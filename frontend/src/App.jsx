@@ -435,7 +435,7 @@ export default function App() {
     <section className="canvas">
       {doc
         ? <Excalidraw key={doc.path} initialData={doc.scene} excalidrawAPI={setApi} onChange={autosave} />
-        : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an Excalidraw file from the sidebar.</p></div>}
+        : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an Excalidraw file from the sidebar.<br />Or double-click to create a new one.</p></div>}
     </section>
   </main>;
 }
