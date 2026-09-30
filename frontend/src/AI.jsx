@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { CaptureUpdateAction, convertToExcalidrawElements, exportToBlob, restore, serializeAsJSON } from "@excalidraw/excalidraw";
-import { AskAI, CancelAI, CreateAISession, LoadAISettings, SaveAISettings } from "../wailsjs/go/main/App";
+import { AskAI, CancelAI, CreateAISession, LoadAISettings, SaveAISettings, ResolveAICanvas } from "../wailsjs/go/main/App";
+import { EventsOn } from "../wailsjs/runtime/runtime";
+import { materializeCanvas, reconcileMermaid, renderMermaid } from "./mermaid";
 import { sceneSignature, splitMCPElements } from "./scene";
 
 // Lucide Settings (ISC), kept inline like the existing sidebar icons.
@@ -77,9 +79,20 @@ export function CanvasChat({ doc, api, onSettings }) {
   const running = useRef(false);
   const transcript = useRef();
   const currentAPI = useRef(api);
+  const canvasJob = useRef(null);
   currentAPI.current = api;
 
   useEffect(() => () => { request.current++; if (running.current) CancelAI(); }, []);
+  useEffect(() => EventsOn("ai:canvas", async (job) => {
+    const turn = canvasJob.current;
+    if (!turn) return;
+    try {
+      if (turn.id !== request.current || currentAPI.current !== turn.api || sceneSignature(turn.api.getSceneElements()) !== turn.signature) throw new Error("The canvas changed while AI was working. Send your request again.");
+      const elements = job.kind === "mermaid" ? await renderMermaid(job) : await materializeCanvas(job.elements, job.previous);
+      if (turn.id !== request.current || currentAPI.current !== turn.api || sceneSignature(turn.api.getSceneElements()) !== turn.signature) throw new Error("The canvas changed while AI was working. Send your request again.");
+      await ResolveAICanvas(job.id, JSON.stringify(elements), "");
+    } catch (error) { await ResolveAICanvas(job.id, "", String(error)); }
+  }), []);
   useEffect(() => { if (transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight; }, [messages, expanded, busy]);
 
   function cancel() { request.current++; CancelAI(); running.current = false; setBusy(false); setError("Request cancelled"); }
@@ -109,8 +122,9 @@ export function CanvasChat({ doc, api, onSettings }) {
       const settings = await LoadAISettings();
       if (id !== request.current) return;
       if (!settings.hasAPIKey) { onSettings(); return; }
-      const elements = api.getSceneElements();
-      const signature = sceneSignature(elements);
+      const originalElements = api.getSceneElements();
+      const elements = reconcileMermaid(originalElements);
+      const signature = sceneSignature(originalElements);
       const files = api.getFiles();
       const appState = api.getAppState();
       const scene = serializeAsJSON(elements, appState, files, "local");
@@ -127,6 +141,7 @@ export function CanvasChat({ doc, api, onSettings }) {
       }
       setPrompt("");
       setMessages((previous) => [...previous, { role: "user", content: text }]);
+      canvasJob.current = { id, api, signature };
       const result = await AskAI(doc.path, scene, checkpoint.current, text, screenshot, messages.slice(-12), session.current);
       if (id !== request.current) return;
       if (currentAPI.current !== api) throw new Error("The document changed. Send your request again.");
@@ -137,13 +152,16 @@ export function CanvasChat({ doc, api, onSettings }) {
       if (result.elements) {
         const { standard, shorthand } = splitMCPElements(result.elements);
         const converted = convertToExcalidrawElements(shorthand, { regenerateIds: false });
-        const updated = restore({ elements: [...standard, ...converted] }, null, null, { repairBindings: true }).elements;
+        const updated = reconcileMermaid(restore({ elements: [...standard, ...converted] }, null, null, { repairBindings: true }).elements, elements);
         api.updateScene({ elements: updated, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+        const previousDiagrams = new Set(elements.map((element) => element.customData?.exbaseMermaid?.id).filter(Boolean));
+        const created = updated.filter((element) => element.customData?.exbaseMermaid?.active && !previousDiagrams.has(element.customData.exbaseMermaid.id));
+        if (created.length) api.scrollToContent(created, { fitToContent: true, animate: true });
       }
       checkpoint.current = result.checkpointId;
       setMessages((previous) => [...previous, { role: "assistant", content: result.reply || "Canvas updated.", reasoning_content: result.reasoningContent || "" }]);
     } catch (error) { if (id === request.current) { setError(String(error)); setPrompt(text); } }
-    finally { if (id === request.current) { running.current = false; setBusy(false); } }
+    finally { if (canvasJob.current?.id === id) canvasJob.current = null; if (id === request.current) { running.current = false; setBusy(false); } }
   }
 
   const lastReply = [...messages].reverse().find((message) => message.role === "assistant")?.content;

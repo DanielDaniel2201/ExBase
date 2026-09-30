@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
+import { CaptureUpdateAction, Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
 import {
   ChooseFolder, CreateDocument, CreateFolder, DeleteEntry, OpenDocument, ReadDirectory, Rename, Save, SwitchFolder, Workspaces,
 } from "../wailsjs/go/main/App";
 import { Quit, WindowMinimise, WindowToggleMaximise } from "../wailsjs/runtime/runtime";
 import { parseScene } from "./scene";
+import { reconcileMermaid } from "./mermaid";
 import { CanvasChat, SettingsIcon, SettingsModal } from "./AI";
 
 function basename(path) {
@@ -364,13 +365,19 @@ export default function App() {
 
   async function save() {
     clearTimeout(autosaveTimer.current);
-    const data = serializeAsJSON(api.getSceneElements(), api.getAppState(), api.getFiles(), "local");
+    const data = serializeAsJSON(reconcileMermaid(api.getSceneElements()), api.getAppState(), api.getFiles(), "local");
     await Save(doc.path, data);
     lastSaved.current = data;
     setStatus("Saved");
   }
 
   function autosave(elements, appState, files) {
+    const reconciled = reconcileMermaid(elements);
+    if (reconciled !== elements && api) {
+      api.updateScene({ elements: reconciled, captureUpdate: CaptureUpdateAction.NEVER });
+      return;
+    }
+    elements = reconciled;
     const data = serializeAsJSON(elements, appState, files, "local");
     if (data === lastSaved.current) return;
     clearTimeout(autosaveTimer.current);
