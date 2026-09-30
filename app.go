@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -156,6 +157,117 @@ func (a *App) OpenDocument(path string) (Document, error) {
 	}
 	data, err := os.ReadFile(path)
 	return Document{Path: path, Data: string(data)}, err
+}
+
+func (a *App) CreateDocument(dir string) (Document, error) {
+	if dir == "" {
+		dir = a.root
+	}
+	if !a.contains(dir) {
+		return Document{}, errors.New("folder is outside the open workspace")
+	}
+	path, file, err := createUnique(dir, "Untitled", ".excalidraw", false)
+	if err != nil {
+		return Document{}, err
+	}
+	data := `{"type":"excalidraw","version":2,"source":"local","elements":[],"appState":{},"files":{}}`
+	if _, err := file.WriteString(data); err != nil {
+		file.Close()
+		os.Remove(path)
+		return Document{}, err
+	}
+	if err := file.Close(); err != nil {
+		return Document{}, err
+	}
+	return Document{Path: path, Data: data}, nil
+}
+
+func (a *App) CreateFolder(dir string) (FileEntry, error) {
+	if dir == "" {
+		dir = a.root
+	}
+	if !a.contains(dir) {
+		return FileEntry{}, errors.New("folder is outside the open workspace")
+	}
+	path, _, err := createUnique(dir, "Untitled", "", true)
+	return FileEntry{Name: filepath.Base(path), Path: path, IsDir: true}, err
+}
+
+func (a *App) Rename(path, name string) (FileEntry, error) {
+	path = filepath.Clean(path)
+	name = strings.TrimSpace(name)
+	if !a.contains(path) || strings.EqualFold(path, a.root) {
+		return FileEntry{}, errors.New("item is outside the open workspace")
+	}
+	if name == "" || filepath.Base(name) != name || name == "." || name == ".." {
+		return FileEntry{}, errors.New("enter a valid name")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return FileEntry{}, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return FileEntry{}, errors.New("symbolic links cannot be renamed")
+	}
+	if !info.IsDir() && !strings.EqualFold(filepath.Ext(name), ".excalidraw") {
+		name += ".excalidraw"
+	}
+	target := filepath.Join(filepath.Dir(path), name)
+	entry := FileEntry{Name: filepath.Base(target), Path: target, IsDir: info.IsDir()}
+	if path == target {
+		return entry, nil
+	}
+	if _, err := os.Lstat(target); err == nil {
+		return FileEntry{}, errors.New("an item with that name already exists")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return FileEntry{}, err
+	}
+	return entry, os.Rename(path, target)
+}
+
+func (a *App) DeleteEntry(path string) error {
+	path = filepath.Clean(path)
+	if !a.contains(path) || strings.EqualFold(path, a.root) {
+		return errors.New("item is outside the open workspace")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("symbolic links cannot be deleted")
+	}
+	if info.IsDir() {
+		return os.RemoveAll(path)
+	}
+	if !strings.EqualFold(filepath.Ext(path), ".excalidraw") {
+		return errors.New("only Excalidraw files can be deleted")
+	}
+	return os.Remove(path)
+}
+
+func createUnique(dir, name, ext string, directory bool) (string, *os.File, error) {
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return "", nil, errors.New("workspace folder no longer exists")
+	}
+	for i := 1; ; i++ {
+		candidate := filepath.Join(dir, name+ext)
+		if i > 1 {
+			candidate = filepath.Join(dir, name+" "+strconv.Itoa(i)+ext)
+		}
+		if directory {
+			if err := os.Mkdir(candidate, 0755); errors.Is(err, os.ErrExist) {
+				continue
+			} else {
+				return candidate, nil, err
+			}
+		}
+		file, err := os.OpenFile(candidate, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		return candidate, file, err
+	}
 }
 
 func (a *App) Save(path, data string) error {

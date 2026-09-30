@@ -56,3 +56,57 @@ func TestWorkspaceHistory(t *testing.T) {
 		t.Fatalf("unexpected workspace history: %#v", state)
 	}
 }
+
+func TestCreateUnique(t *testing.T) {
+	root := t.TempDir()
+	app := &App{root: root}
+	first, err := app.CreateDocument(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := app.CreateDocument(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(first.Path) != "Untitled.excalidraw" || filepath.Base(second.Path) != "Untitled 2.excalidraw" {
+		t.Fatalf("unexpected document names: %q, %q", first.Path, second.Path)
+	}
+	folder, err := app.CreateFolder(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.CreateFolder(root); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Untitled", "Untitled 2"} {
+		if info, err := os.Stat(filepath.Join(root, name)); err != nil || !info.IsDir() {
+			t.Fatalf("folder %q was not created", name)
+		}
+	}
+	inside, err := app.CreateDocument(folder.Path)
+	if err != nil || filepath.Dir(inside.Path) != folder.Path {
+		t.Fatalf("document was not created in the selected folder: %#v, %v", inside, err)
+	}
+	renamed, err := app.Rename(first.Path, "Diagram")
+	if err != nil || filepath.Base(renamed.Path) != "Diagram.excalidraw" {
+		t.Fatalf("unexpected rename result: %#v, %v", renamed, err)
+	}
+	if _, err := app.CreateDocument(filepath.Dir(root)); err == nil {
+		t.Fatal("creating outside the workspace should fail")
+	}
+	if err := app.DeleteEntry(second.Path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(second.Path); !os.IsNotExist(err) {
+		t.Fatal("document was not deleted")
+	}
+	if err := app.DeleteEntry(folder.Path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(inside.Path); !os.IsNotExist(err) {
+		t.Fatal("folder contents were not deleted")
+	}
+	if err := app.DeleteEntry(root); err == nil {
+		t.Fatal("workspace root deletion should fail")
+	}
+}

@@ -1,13 +1,19 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
 import {
-  ChooseFolder, OpenDocument, ReadDirectory, Save, SwitchFolder, Workspaces,
+  ChooseFolder, CreateDocument, CreateFolder, DeleteEntry, OpenDocument, ReadDirectory, Rename, Save, SwitchFolder, Workspaces,
 } from "../wailsjs/go/main/App";
 import { Quit, WindowMinimise, WindowToggleMaximise } from "../wailsjs/runtime/runtime";
 import { parseScene } from "./scene";
 
 function basename(path) {
   return path.split(/[\\/]/).pop();
+}
+
+function isSameOrChild(path, parent) {
+  path = path?.toLowerCase();
+  parent = parent.toLowerCase();
+  return path === parent || path?.startsWith(parent + "\\") || path?.startsWith(parent + "/");
 }
 
 function FolderIcon({ open }) {
@@ -47,36 +53,95 @@ function PencilRulerIcon() {
   </svg>;
 }
 
-function TreeNode({ entry, activePath, onOpen, onError }) {
-  const [open, setOpen] = useState(false);
-  const [children, setChildren] = useState(null);
+function RenameInput({ entry, onCommit, onCancel }) {
+  const [value, setValue] = useState(entry.name);
+  const input = useRef();
+  const committing = useRef(false);
 
-  async function activate() {
-    if (!entry.isDir) return onOpen(entry.path);
-    const next = !open;
-    setOpen(next);
-    if (next && children === null) {
-      try {
-        setChildren(await ReadDirectory(entry.path));
-      } catch (error) {
-        setOpen(false);
-        onError(String(error));
-      }
+  useEffect(() => {
+    input.current.focus();
+    input.current.setSelectionRange(0, entry.isDir ? entry.name.length : Math.max(0, entry.name.lastIndexOf(".")));
+  }, []);
+
+  async function commit() {
+    if (committing.current) return;
+    committing.current = true;
+    if (!await onCommit(entry, value)) {
+      committing.current = false;
+      input.current.focus();
     }
   }
 
+  return <input
+    ref={input}
+    className="tree-name-input"
+    value={value}
+    onChange={(event) => setValue(event.target.value)}
+    onBlur={commit}
+    onKeyDown={(event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commit();
+      }
+      if (event.key === "Escape") {
+        committing.current = true;
+        onCancel();
+      }
+    }}
+  />;
+}
+
+function TreeNode({ entry, activePath, selectedPath, editingPath, onOpen, onSelect, onError, onMenu, onRename, onCancelRename, refreshKey, revealPath }) {
+  const [open, setOpen] = useState(false);
+  const [children, setChildren] = useState(null);
+
+  useEffect(() => {
+    if (!entry.isDir || !open) return;
+    ReadDirectory(entry.path).then(setChildren).catch((error) => {
+      setOpen(false);
+      onError(String(error));
+    });
+  }, [entry.path, open, refreshKey]);
+
+  useEffect(() => {
+    if (entry.path === revealPath) setOpen(true);
+  }, [entry.path, revealPath]);
+
+  async function activate() {
+    onSelect(entry);
+    if (!entry.isDir) return onOpen(entry.path);
+    setOpen(!open);
+  }
+
   return <li>
-    <button
-      className={`tree-row ${entry.path === activePath ? "active" : ""}`}
-      onClick={activate}
-      title={entry.path}
-    >
-      {entry.isDir
-        ? <FolderIcon open={open} />
-        : <PencilRulerIcon />}
-      <span className="tree-name">{entry.name}</span>
-    </button>
-    {entry.isDir && open && <FileTree entries={children || []} activePath={activePath} onOpen={onOpen} onError={onError} />}
+    {entry.path === editingPath
+      ? <div className="tree-row editing">
+          {entry.isDir ? <FolderIcon open={open} /> : <PencilRulerIcon />}
+          <RenameInput entry={entry} onCommit={onRename} onCancel={onCancelRename} />
+        </div>
+      : <button
+          className={`tree-row ${entry.path === activePath ? "active" : ""} ${entry.path === selectedPath ? "selected" : ""}`}
+          onClick={activate}
+          onContextMenu={(event) => onMenu(event, entry)}
+          title={entry.path}
+        >
+          {entry.isDir ? <FolderIcon open={open} /> : <PencilRulerIcon />}
+          <span className="tree-name">{entry.name}</span>
+        </button>}
+    {entry.isDir && open && <FileTree
+      entries={children || []}
+      activePath={activePath}
+      selectedPath={selectedPath}
+      editingPath={editingPath}
+      onOpen={onOpen}
+      onSelect={onSelect}
+      onError={onError}
+      onMenu={onMenu}
+      onRename={onRename}
+      onCancelRename={onCancelRename}
+      refreshKey={refreshKey}
+      revealPath={revealPath}
+    />}
   </li>;
 }
 
@@ -102,6 +167,11 @@ export default function App() {
   const [doc, setDoc] = useState(null);
   const [api, setApi] = useState(null);
   const [status, setStatus] = useState("");
+  const [contextMenu, setContextMenu] = useState(null);
+  const [selectedEntry, setSelectedEntry] = useState(null);
+  const [editingPath, setEditingPath] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [revealPath, setRevealPath] = useState(null);
   const picker = useRef();
   const autosaveTimer = useRef();
   const lastSaved = useRef("");
@@ -110,6 +180,7 @@ export default function App() {
     Workspaces().then((state) => state.current && applyWorkspace(state)).catch((error) => setStatus(String(error)));
     function closePicker(event) {
       if (picker.current?.open && !picker.current.contains(event.target)) picker.current.open = false;
+      setContextMenu(null);
     }
     document.addEventListener("pointerdown", closePicker);
     return () => {
@@ -124,6 +195,10 @@ export default function App() {
     setEntries([]);
     setDoc(null);
     setApi(null);
+    setSelectedEntry(null);
+    setEditingPath(null);
+    setContextMenu(null);
+    setRevealPath(null);
     lastSaved.current = "";
     const items = await ReadDirectory(state.current);
     setEntries(items);
@@ -163,6 +238,106 @@ export default function App() {
       setStatus("");
     } catch (error) {
       setStatus(String(error));
+    }
+  }
+
+  async function refreshTree(dir) {
+    setEntries(await ReadDirectory(workspace));
+    setRefreshKey((value) => value + 1);
+    setRevealPath(dir === workspace ? null : dir);
+  }
+
+  async function createDocument(dir = workspace) {
+    setContextMenu(null);
+    try {
+      if (doc && api) await save();
+      const file = await CreateDocument(dir);
+      const scene = parseScene(file.data);
+      lastSaved.current = file.data;
+      await refreshTree(dir);
+      setApi(null);
+      setDoc({ path: file.path, scene });
+      setSelectedEntry({ name: basename(file.path), path: file.path, isDir: false });
+      setEditingPath(file.path);
+      setStatus("");
+    } catch (error) {
+      setStatus(String(error));
+    }
+  }
+
+  async function createFolder(dir = workspace) {
+    setContextMenu(null);
+    try {
+      const entry = await CreateFolder(dir);
+      await refreshTree(dir);
+      setSelectedEntry(entry);
+      setEditingPath(entry.path);
+      setStatus("");
+    } catch (error) {
+      setStatus(String(error));
+    }
+  }
+
+  async function renameEntry(entry, name) {
+    try {
+      const containsCurrent = isSameOrChild(doc?.path, entry.path);
+      if (containsCurrent && api) await save();
+      const renamed = await Rename(entry.path, name);
+      if (containsCurrent) {
+        const file = await OpenDocument(renamed.path + doc.path.slice(entry.path.length));
+        const scene = parseScene(file.data);
+        lastSaved.current = file.data;
+        setApi(null);
+        setDoc({ path: file.path, scene });
+      }
+      setSelectedEntry(renamed);
+      setEditingPath(null);
+      await refreshTree("");
+      setStatus("");
+      return true;
+    } catch (error) {
+      setStatus(String(error));
+      return false;
+    }
+  }
+
+  function showContextMenu(event, entry = null) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (entry) setSelectedEntry(entry);
+    setContextMenu({
+      x: Math.min(event.clientX, window.innerWidth - 190),
+      y: Math.min(event.clientY, window.innerHeight - 140),
+      entry,
+    });
+  }
+
+  async function deleteEntry(entry) {
+    setContextMenu(null);
+    if (entry.isDir && !window.confirm(`Delete "${entry.name}" and everything inside it?`)) return;
+    const deletesCurrent = isSameOrChild(doc?.path, entry.path);
+    if (deletesCurrent) clearTimeout(autosaveTimer.current);
+    try {
+      await DeleteEntry(entry.path);
+      if (deletesCurrent) {
+        setDoc(null);
+        setApi(null);
+        lastSaved.current = "";
+      }
+      if (isSameOrChild(editingPath, entry.path)) setEditingPath(null);
+      setSelectedEntry(null);
+      await refreshTree("");
+      setStatus("");
+    } catch (error) {
+      if (deletesCurrent && api) autosave(api.getSceneElements(), api.getAppState(), api.getFiles());
+      setStatus(String(error));
+    }
+  }
+
+  function handleTreeKeyDown(event) {
+    if (event.key === "Delete" && !event.repeat && selectedEntry && event.target.tagName !== "INPUT") {
+      event.preventDefault();
+      deleteEntry(selectedEntry);
     }
   }
 
@@ -219,16 +394,48 @@ export default function App() {
           <button onClick={chooseFolder}>Open Another Folder</button>
         </div>
       </details>
-      <nav aria-label="Excalidraw files">
-        <FileTree entries={entries} activePath={doc?.path} onOpen={openDocument} onError={setStatus} />
+      <nav aria-label="Excalidraw files" onContextMenu={(event) => showContextMenu(event)} onKeyDown={handleTreeKeyDown}>
+        <FileTree
+          entries={entries}
+          activePath={doc?.path}
+          selectedPath={selectedEntry?.path}
+          editingPath={editingPath}
+          onOpen={openDocument}
+          onSelect={setSelectedEntry}
+          onError={setStatus}
+          onMenu={showContextMenu}
+          onRename={renameEntry}
+          onCancelRename={() => setEditingPath(null)}
+          refreshKey={refreshKey}
+          revealPath={revealPath}
+        />
       </nav>
+      {contextMenu && <div
+        className="context-menu"
+        style={{ left: contextMenu.x, top: contextMenu.y }}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        {contextMenu.entry
+          ? <>
+              <button onClick={() => {
+                setEditingPath(contextMenu.entry.path);
+                setContextMenu(null);
+              }}>Rename</button>
+              {contextMenu.entry.isDir && <button onClick={() => createDocument(contextMenu.entry.path)}>New Excalidraw File</button>}
+              <button onClick={() => deleteEntry(contextMenu.entry)}>Delete</button>
+            </>
+          : <>
+              <button onClick={() => createDocument()}>New Excalidraw File</button>
+              <button onClick={() => createFolder()}>New Folder</button>
+            </>}
+      </div>}
       {status && <small className={status === "Saved" || status === "Saving..." ? "" : "error"}>{status}</small>}
     </aside>
     <Titlebar />
     <section className="canvas">
       {doc
         ? <Excalidraw key={doc.path} initialData={doc.scene} excalidrawAPI={setApi} onChange={autosave} />
-        : <div className="blank"><p>Select an Excalidraw file from the sidebar.</p></div>}
+        : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an Excalidraw file from the sidebar.</p></div>}
     </section>
   </main>;
 }
