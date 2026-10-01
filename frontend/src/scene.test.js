@@ -29,6 +29,16 @@ test("MCP results retain standard elements, separate shorthand, and reject dupli
   assert.notEqual(sceneSignature([original]), sceneSignature([{ ...original, isDeleted: true }]));
 });
 
+test("MCP frames infer contained children before Excalidraw conversion", () => {
+  const frame = { id: "frame", type: "frame", x: 0, y: 0, width: 100, height: 100 };
+  const inside = { id: "inside", type: "rectangle", x: 20, y: 20, width: 20, height: 20 };
+  const outside = { id: "outside", type: "rectangle", x: 120, y: 20, width: 20, height: 20 };
+  const { shorthand } = splitMCPElements([frame, inside, outside]);
+  assert.deepEqual(shorthand[0].children, ["inside"]);
+  assert.equal(frame.children, undefined);
+  assert.throws(() => splitMCPElements([frame]), /contains no elements/);
+});
+
 test("MCP line normalization preserves absolute points before skeleton conversion", () => {
   for (const type of ["arrow", "line"]) {
     for (const points of [[[0, 40], [138, 0]], [[0, 0], [138, -40]], [[10, 20], [60, 20], [138, 80]]]) {

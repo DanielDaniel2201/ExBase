@@ -285,7 +285,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"session_start", "turn_start", "llm_request", "llm_response", "mcp_request", "mcp_response", "canvas_preview", "request-1", "tool-reasoning", "final-reasoning", "total_tokens", "turn_complete", "llm_error", "turn_error", `"cancelled":true`} {
+	for _, expected := range []string{"session_start", "turn_start", "llm_request", "tool_arguments_started", "first_complete_element", "llm_response", "mcp_request", "mcp_response", "canvas_preview", "request-1", "tool-reasoning", "final-reasoning", "total_tokens", "turn_complete", "llm_error", "turn_error", `"cancelled":true`} {
 		if !strings.Contains(string(data), expected) {
 			t.Errorf("trace missing %s", expected)
 		}

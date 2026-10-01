@@ -499,6 +499,8 @@ func (a *App) AskAI(path, scene, checkpoint, prompt, screenshot string, history 
 		response, err := decodeAIResponse(resp.Body, strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream"), func(edits []map[string]any, changeStyle bool) error {
 			inheritAIConnectorStyle(edits, connectorStyle, changeStyle)
 			return emitPreview(resolveAIPreview(current.Elements, edits))
+		}, func(event string) error {
+			return trace.write(event, map[string]any{"round": round + 1, "tool": "create_view", "elapsed_ms": time.Since(llmStarted).Milliseconds()})
 		})
 		resp.Body.Close()
 		if err != nil {
@@ -577,8 +579,8 @@ func (a *App) AskAI(path, scene, checkpoint, prompt, screenshot string, history 
 				// Enforce restoration even if the model omits it, so existing work survives.
 				if name == "create_view" {
 					elements, _ := args["elements"].(string)
-					var edits []map[string]any
-					if err := json.Unmarshal([]byte(elements), &edits); err != nil {
+					edits, err := decodeAIElements(elements)
+					if err != nil {
 						return AIResult{}, errors.New("invalid AI elements")
 					}
 					changeStyle, _ := args["changeConnectorStyle"].(bool)

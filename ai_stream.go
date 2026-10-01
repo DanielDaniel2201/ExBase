@@ -80,6 +80,46 @@ func completeAIElements(arguments string) []map[string]any {
 	return nil
 }
 
+// Repair one unquoted ASCII object key, then require the whole payload to parse.
+func decodeAIElements(encoded string) ([]map[string]any, error) {
+	var elements []map[string]any
+	err := json.Unmarshal([]byte(encoded), &elements)
+	if err == nil {
+		return elements, nil
+	}
+	var syntax *json.SyntaxError
+	if !errors.As(err, &syntax) {
+		return nil, err
+	}
+	start := int(syntax.Offset) - 1
+	if start < 0 || start >= len(encoded) || !((encoded[start] >= 'A' && encoded[start] <= 'Z') || (encoded[start] >= 'a' && encoded[start] <= 'z') || encoded[start] == '_') {
+		return nil, err
+	}
+	previous := start - 1
+	for previous >= 0 && strings.ContainsRune(" \t\r\n", rune(encoded[previous])) {
+		previous--
+	}
+	if previous < 0 || (encoded[previous] != '{' && encoded[previous] != ',') {
+		return nil, err
+	}
+	end := start + 1
+	for end < len(encoded) && ((encoded[end] >= 'A' && encoded[end] <= 'Z') || (encoded[end] >= 'a' && encoded[end] <= 'z') || (encoded[end] >= '0' && encoded[end] <= '9') || encoded[end] == '_') {
+		end++
+	}
+	colon := end
+	for colon < len(encoded) && strings.ContainsRune(" \t\r\n", rune(encoded[colon])) {
+		colon++
+	}
+	if colon >= len(encoded) || encoded[colon] != ':' {
+		return nil, err
+	}
+	repaired := encoded[:start] + `"` + encoded[start:end] + `"` + encoded[end:]
+	if repairErr := json.Unmarshal([]byte(repaired), &elements); repairErr != nil {
+		return nil, err
+	}
+	return elements, nil
+}
+
 // Read the host-only style flag even while the elements string is incomplete.
 func changeAIConnectorStyle(arguments string) bool {
 	var options struct {
@@ -146,7 +186,7 @@ func inheritAIConnectorStyle(edits []map[string]any, style map[string]any, chang
 	}
 }
 
-func decodeAIResponse(reader io.Reader, streaming bool, preview func([]map[string]any, bool) error) (aiResponse, error) {
+func decodeAIResponse(reader io.Reader, streaming bool, preview func([]map[string]any, bool) error, milestone func(string) error) (aiResponse, error) {
 	var response aiResponse
 	if !streaming {
 		err := json.NewDecoder(io.LimitReader(reader, 8<<20)).Decode(&response)
@@ -159,13 +199,25 @@ func decodeAIResponse(reader io.Reader, streaming bool, preview func([]map[strin
 	calls := []any{}
 	finish := ""
 	previewCall, previewCount := -1, 0
+	toolStarted, firstElement := false, false
 	var lastPreview time.Time
 	flush := func(force bool) error {
-		if preview == nil || previewCall < 0 || (!force && time.Since(lastPreview) < 2*time.Second) {
+		if previewCall < 0 || (!force && time.Since(lastPreview) < 2*time.Second) {
 			return nil
 		}
 		fn := calls[previewCall].(map[string]any)["function"].(map[string]any)
 		elements := completeAIElements(fn["arguments"].(string))
+		if !firstElement && len(elements) > 0 {
+			firstElement = true
+			if milestone != nil {
+				if err := milestone("first_complete_element"); err != nil {
+					return err
+				}
+			}
+		}
+		if preview == nil {
+			return nil
+		}
 		if len(elements) <= previewCount {
 			return nil
 		}
@@ -248,6 +300,14 @@ func decodeAIResponse(reader io.Reader, streaming bool, preview func([]map[strin
 				// ponytail: preview the first drawing call per response; later calls preview after execution.
 				if previewCall < 0 && fn["name"] == "create_view" {
 					previewCall = delta.Index
+				}
+				if !toolStarted && previewCall == delta.Index && fn["arguments"] != "" {
+					toolStarted = true
+					if milestone != nil {
+						if err := milestone("tool_arguments_started"); err != nil {
+							return false, err
+						}
+					}
 				}
 			}
 		}

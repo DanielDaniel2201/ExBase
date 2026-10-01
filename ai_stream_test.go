@@ -36,12 +36,13 @@ func TestAIStreamPreviewsBeforeCompletion(t *testing.T) {
 	defer reader.Close()
 	defer writer.Close()
 	previews := make(chan []map[string]any, 8)
+	milestones := make(chan string, 2)
 	done := make(chan struct {
 		response aiResponse
 		err      error
 	}, 1)
 	go func() {
-		response, err := decodeAIResponse(reader, true, func(elements []map[string]any, _ bool) error { previews <- elements; return nil })
+		response, err := decodeAIResponse(reader, true, func(elements []map[string]any, _ bool) error { previews <- elements; return nil }, func(event string) error { milestones <- event; return nil })
 		done <- struct {
 			response aiResponse
 			err      error
@@ -58,6 +59,11 @@ func TestAIStreamPreviewsBeforeCompletion(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("preview waited for the final tool result")
+	}
+	for _, expected := range []string{"tool_arguments_started", "first_complete_element"} {
+		if event := <-milestones; event != expected {
+			t.Fatalf("got milestone %q, want %q", event, expected)
+		}
 	}
 	select {
 	case <-done:
@@ -85,13 +91,20 @@ func TestAIStreamPreviewsBeforeCompletion(t *testing.T) {
 		t.Fatal("tool arguments were not reassembled")
 	}
 	for _, truncated := range []string{"data: {}\n\n", "data: [DONE]\n\n"} {
-		if _, err := decodeAIResponse(strings.NewReader(truncated), true, nil); err == nil {
+		if _, err := decodeAIResponse(strings.NewReader(truncated), true, nil, nil); err == nil {
 			t.Fatal("incomplete stream accepted")
 		}
 	}
 }
 
 func TestCompleteAIElementsAndCheckpointPreview(t *testing.T) {
+	repaired, err := decodeAIElements(`[{"type":"text","text":"value",fontSize:22}]`)
+	if err != nil || len(repaired) != 1 || repaired[0]["fontSize"] != 22. {
+		t.Fatal("single unquoted element key was not repaired", repaired, err)
+	}
+	if _, err := decodeAIElements(`[{"type":"text",fontSize:}]`); err == nil {
+		t.Fatal("invalid elements were accepted after repair")
+	}
 	first := `{"type":"text","id":"a","x":0,"y":0,"text":"引号 \\\" and } and \\u4e2d"}`
 	partial := "[" + first + `,{"type":"text","text":"unfinished`
 	encoded, _ := json.Marshal(map[string]string{"elements": partial})

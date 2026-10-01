@@ -50,5 +50,19 @@ export function splitMCPElements(elements) {
       shorthand.push(element);
     }
   }
+  const candidates = [...standard, ...shorthand];
+  for (let index = 0; index < shorthand.length; index++) {
+    const frame = shorthand[index];
+    if (!["frame", "magicframe"].includes(frame.type)) continue;
+    if (frame.children != null && !Array.isArray(frame.children)) throw new Error("Invalid MCP frame children");
+    if (frame.children?.length) continue;
+    if (![frame.width, frame.height].every((value) => Number.isFinite(value) && value > 0)) throw new Error("Invalid MCP frame size");
+    // ponytail: center-point inference covers generated, non-overlapping frames; nested frames need explicit children.
+    const children = candidates.filter((element) => element.id !== frame.id && !["frame", "magicframe"].includes(element.type) &&
+      element.x + (Number.isFinite(element.width) ? element.width / 2 : 0) >= frame.x && element.x + (Number.isFinite(element.width) ? element.width / 2 : 0) <= frame.x + frame.width &&
+      element.y + (Number.isFinite(element.height) ? element.height / 2 : 0) >= frame.y && element.y + (Number.isFinite(element.height) ? element.height / 2 : 0) <= frame.y + frame.height).map((element) => element.id);
+    if (!children.length) throw new Error("MCP frame contains no elements");
+    shorthand[index] = { ...frame, children };
+  }
   return { standard, shorthand };
 }
