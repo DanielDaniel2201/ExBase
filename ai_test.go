@@ -96,6 +96,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 		t.Fatal(err)
 	}
 	var synced bool
+	var guideProvided bool
 	rounds := 0
 	creates := 0
 	waiting := make(chan struct{})
@@ -112,6 +113,15 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 			}
 			if !synced {
 				t.Error("model must run after checkpoint sync")
+			}
+			if !guideProvided || !strings.Contains(body["messages"].([]any)[0].(map[string]any)["content"].(string), "Test drawing format") {
+				t.Error("drawing instructions must be supplied before the first model request")
+			}
+			if body["stream"] != true {
+				t.Error("model output must stream")
+			}
+			if tools := body["tools"].([]any); len(tools) != 1 || tools[0].(map[string]any)["function"].(map[string]any)["name"] != "create_view" {
+				t.Error("model should not need a read_me round")
 			}
 			if body["model"] != "deepseek-flash" {
 				t.Error("wrong model")
@@ -145,7 +155,11 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 			}
 			rounds++
 			if rounds == 1 {
-				io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":null,"reasoning_content":"tool-reasoning","tool_calls":[{"id":"call1","type":"function","function":{"name":"create_view","arguments":"{\"elements\":\"[{\\\"type\\\":\\\"rectangle\\\",\\\"id\\\":\\\"new\\\",\\\"x\\\":10,\\\"y\\\":20}]\"}"}}]},"finish_reason":"tool_calls"}]}`)
+				w.Header().Set("Content-Type", "text/event-stream")
+				arguments, _ := json.Marshal(map[string]string{"elements": `[{"type":"rectangle","id":"new","x":10,"y":20}]`})
+				writeAIChunk(w, map[string]any{"reasoning_content": "tool-reasoning", "tool_calls": []any{map[string]any{"index": 0, "id": "call1", "function": map[string]string{"name": "create_view", "arguments": string(arguments[:len(arguments)-2])}}}}, "")
+				writeAIChunk(w, map[string]any{"tool_calls": []any{map[string]any{"index": 0, "function": map[string]string{"arguments": string(arguments[len(arguments)-2:])}}}}, "tool_calls")
+				io.WriteString(w, "data: [DONE]\n\n")
 			} else {
 				io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"Done","reasoning_content":"final-reasoning"},"finish_reason":"stop"}],"usage":{"prompt_tokens":123,"completion_tokens":45,"total_tokens":168}}`)
 			}
@@ -166,6 +180,9 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 			params := body["params"].(map[string]any)
 			args := params["arguments"].(map[string]any)
 			switch params["name"] {
+			case "read_me":
+				guideProvided = true
+				result = map[string]any{"content": []any{map[string]string{"type": "text", "text": "Test drawing format"}}}
 			case "save_checkpoint":
 				if !strings.Contains(args["data"].(string), `"original"`) {
 					t.Error("current local elements must be synced")
@@ -199,18 +216,18 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	}
 	history := []ChatMessage{{Role: "assistant", Content: "Previous reply", ReasoningContent: "previous-reasoning"}}
 	scene := `{"elements":[{"id":"original","type":"rectangle","x":0,"y":0,"version":1}]}`
-	result, err := app.AskAI(path, scene, "", "Add a box", "", history, sessionID)
+	result, err := app.AskAI(path, scene, "", "Add a box", "", history, sessionID, "request-1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Reply != "Done" || result.ReasoningContent != "final-reasoning" || !strings.Contains(string(result.Elements), "original") || rounds != 2 {
 		t.Fatal("agent lost canvas state or did not complete")
 	}
-	if _, err := app.AskAI(path, scene, result.CheckpointID, "Fail", "", history, sessionID); err == nil {
+	if _, err := app.AskAI(path, scene, result.CheckpointID, "Fail", "", history, sessionID, "request-2"); err == nil {
 		t.Fatal("model error must be returned")
 	}
 	before := creates
-	if _, err := app.AskAI(path, scene, result.CheckpointID, "Truncate", "", history, sessionID); err == nil || !strings.Contains(err.Error(), "truncated") {
+	if _, err := app.AskAI(path, scene, result.CheckpointID, "Truncate", "", history, sessionID, "request-3"); err == nil || !strings.Contains(err.Error(), "truncated") {
 		t.Fatal("truncated output must be rejected", err)
 	}
 	if creates != before {
@@ -218,7 +235,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, err := app.AskAI(path, scene, result.CheckpointID, "Wait", "", history, sessionID)
+		_, err := app.AskAI(path, scene, result.CheckpointID, "Wait", "", history, sessionID, "request-4")
 		done <- err
 	}()
 	select {
@@ -241,7 +258,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"session_start", "turn_start", "llm_request", "llm_response", "mcp_request", "mcp_response", "tool-reasoning", "final-reasoning", "total_tokens", "turn_complete", "llm_error", "turn_error", `"cancelled":true`} {
+	for _, expected := range []string{"session_start", "turn_start", "llm_request", "llm_response", "mcp_request", "mcp_response", "canvas_preview", "request-1", "tool-reasoning", "final-reasoning", "total_tokens", "turn_complete", "llm_error", "turn_error", `"cancelled":true`} {
 		if !strings.Contains(string(data), expected) {
 			t.Errorf("trace missing %s", expected)
 		}
@@ -249,7 +266,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	if strings.Contains(string(data), "test-key") {
 		t.Fatal("trace leaked API key")
 	}
-	if _, err := app.AskAI(filepath.Join(app.root, "..", "outside.excalidraw"), `{"elements":[]}`, "", "edit", "", nil, sessionID); err == nil {
+	if _, err := app.AskAI(filepath.Join(app.root, "..", "outside.excalidraw"), `{"elements":[]}`, "", "edit", "", nil, sessionID, "request-5"); err == nil {
 		t.Fatal("outside workspace request accepted")
 	}
 }
