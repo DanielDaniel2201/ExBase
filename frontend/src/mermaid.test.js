@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { markMermaid, mermaidDiagrams, reconcileMermaid, remapSkeleton, replaceDiagram } from "./mermaid.js";
+import { markMermaid, mermaidDiagrams, normalizeMermaidBreaks, reconcileMermaid, remapSkeleton, replaceDiagram } from "./mermaid.js";
 
 const node = (id, x = 0) => ({ id, type: "rectangle", x, y: 0, width: 100, height: 60, angle: 0, isDeleted: false, version: 1, versionNonce: 1, groupIds: ["native-group"] });
 const diagram = () => markMermaid([node("a"), node("b", 200)], "diagram", "flowchart LR\nA-->B", { "rectangle:A:0": "a" });
@@ -57,6 +57,15 @@ test("diagram IDs, parallel edges and subgroups are isolated while node IDs surv
   assert.notEqual(first.elements[0].groupIds[0], second.elements[0].groupIds[0]);
   assert.deepEqual(remapSkeleton(skeleton, "one", first.idMap), first);
   assert.equal(skeleton[0].id, "A");
+});
+
+test("Mermaid HTML breaks become editable line breaks", () => {
+  const [node, text] = normalizeMermaidBreaks([
+    { type: "rectangle", label: { text: "Q<br/>查询<br >详情" } },
+    { type: "text", text: "输入<BR>嵌入" },
+  ]);
+  assert.equal(node.label.text, "Q\n查询\n详情");
+  assert.equal(text.text, "输入\n嵌入");
 });
 
 test("replacement preserves unrelated drawings and moves externally bound endpoints; removed targets are rejected", () => {

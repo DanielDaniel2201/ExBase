@@ -76,6 +76,11 @@ export function remapSkeleton(skeleton, id, previousMap = {}) {
   return { elements: elements.map((e) => ({ ...e, ...(e.start ? { start: { ...e.start, id: nodeIds.get(e.start.id) } } : {}), ...(e.end ? { end: { ...e.end, id: nodeIds.get(e.end.id) } } : {}) })), idMap };
 }
 
+export function normalizeMermaidBreaks(elements) {
+  const normalize = (text) => typeof text === "string" ? text.replace(/<br\s*\/?>/gi, "\n") : text;
+  return elements.map((element) => ({ ...element, ...(typeof element.text === "string" && { text: normalize(element.text) }), ...(typeof element.label?.text === "string" && { label: { ...element.label, text: normalize(element.label.text) } }) }));
+}
+
 export function replaceDiagram(current, group, replacement) {
   if (!group) return [...current, ...replacement];
   const old = new Map(group.elements.map((e) => [e.id, e]));
@@ -115,7 +120,7 @@ export async function renderMermaid(request) {
   const { parseMermaidToExcalidraw } = await import("@excalidraw/mermaid-to-excalidraw");
   const parsed = await parseMermaidToExcalidraw(source, { securityLevel: "strict", maxEdges: 250, maxTextSize: 16000 });
   if (!parsed.elements.length || parsed.elements.some((e) => e.type === "image") || Object.keys(parsed.files || {}).length) throw new Error("The diagram could not be converted to editable shapes. Simplify the flowchart or use native drawing.");
-  const remapped = remapSkeleton(parsed.elements, id, group?.record.idMap);
+  const remapped = remapSkeleton(normalizeMermaidBreaks(parsed.elements), id, group?.record.idMap);
   let replacement = await materializeCanvas(remapped.elements);
   const bounds = diagramBounds(replacement);
   const previousBounds = group ? diagramBounds(group.elements) : null;
