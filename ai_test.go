@@ -20,20 +20,20 @@ func TestAISettings(t *testing.T) {
 	t.Setenv("HOME", home)
 	app := NewApp()
 	settings, err := app.LoadAISettings()
-	if err != nil || settings.HasAPIKey || settings.ReasoningEffort != "high" {
+	if err != nil || settings.HasAPIKey || settings.APIKey != "" || settings.ReasoningEffort != "high" {
 		t.Fatal(settings, err)
 	}
-	if _, err := app.SaveAISettings("test-key", "low"); err != nil {
+	if _, err := app.SaveAISettings("test-key", "high"); err != nil {
 		t.Fatal(err)
 	}
-	if settings, err = app.SaveAISettings("", "none"); err != nil || settings.ReasoningEffort != "none" {
+	if settings, err = app.SaveAISettings("", "none"); err != nil || settings.APIKey != "test-key" || settings.ReasoningEffort != "none" {
 		t.Fatal(err)
 	}
 	key, err := loadAPIKey()
 	if err != nil || key != "test-key" {
 		t.Fatal("blank save must retain key", err)
 	}
-	if _, err := app.SaveAISettings("replacement", "max"); err != nil {
+	if _, err := app.SaveAISettings("replacement", "none"); err != nil {
 		t.Fatal(err)
 	}
 	key, _ = loadAPIKey()
@@ -43,7 +43,7 @@ func TestAISettings(t *testing.T) {
 	if _, err := app.SaveAISettings("bad\nkey", "high"); err == nil {
 		t.Fatal("header injection must be rejected")
 	}
-	if _, err := app.SaveAISettings("", "medium"); err == nil {
+	if _, err := app.SaveAISettings("", "low"); err == nil {
 		t.Fatal("unsupported reasoning effort must be rejected")
 	}
 	path, _ := authFile()
@@ -57,7 +57,7 @@ func TestAISettings(t *testing.T) {
 }
 
 func TestReasoningRequest(t *testing.T) {
-	for _, effort := range []string{"none", "low", "high", "max"} {
+	for _, effort := range []string{"none", "high"} {
 		body := map[string]any{}
 		applyReasoning(body, effort)
 		thinking := body["thinking"].(map[string]string)["type"]
@@ -68,6 +68,9 @@ func TestReasoningRequest(t *testing.T) {
 		} else if thinking != "enabled" || body["reasoning_effort"] != effort {
 			t.Fatal("reasoning effort was not applied", body)
 		}
+	}
+	if validReasoningEffort("low") || validReasoningEffort("max") {
+		t.Fatal("chat must expose only none and high reasoning")
 	}
 }
 
@@ -110,7 +113,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("HOME", home)
 	app := &App{root: t.TempDir()}
-	if _, err := app.SaveAISettings("test-key", "high"); err != nil {
+	if _, err := app.SaveAISettings("test-key", "none"); err != nil {
 		t.Fatal(err)
 	}
 	var synced bool
@@ -149,7 +152,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 				t.Error("wrong model")
 			}
 			if body["thinking"].(map[string]any)["type"] != "enabled" || body["reasoning_effort"] != "high" {
-				t.Error("thinking must default to high")
+				t.Error("stable mode must use high thinking")
 			}
 			if _, limited := body["max_tokens"]; limited {
 				t.Error("thinking must use the provider's default output budget")
@@ -243,18 +246,18 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	}
 	history := []ChatMessage{{Role: "assistant", Content: "Previous reply", ReasoningContent: "previous-reasoning"}}
 	scene := `{"elements":[{"id":"original","type":"arrow","x":0,"y":0,"version":1,"strokeWidth":1,"endArrowhead":null}]}`
-	result, err := app.AskAI(path, scene, "", "Add a box", "", history, sessionID, "request-1")
+	result, err := app.AskAI(path, scene, "", "Add a box", "", history, sessionID, "request-1", "high")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Reply != "Done" || result.ReasoningContent != "final-reasoning" || !strings.Contains(string(result.Elements), "original") || rounds != 2 {
 		t.Fatal("agent lost canvas state or did not complete")
 	}
-	if _, err := app.AskAI(path, scene, result.CheckpointID, "Fail", "", history, sessionID, "request-2"); err == nil {
+	if _, err := app.AskAI(path, scene, result.CheckpointID, "Fail", "", history, sessionID, "request-2", "high"); err == nil {
 		t.Fatal("model error must be returned")
 	}
 	before := creates
-	if _, err := app.AskAI(path, scene, result.CheckpointID, "Truncate", "", history, sessionID, "request-3"); err == nil || !strings.Contains(err.Error(), "truncated") {
+	if _, err := app.AskAI(path, scene, result.CheckpointID, "Truncate", "", history, sessionID, "request-3", "high"); err == nil || !strings.Contains(err.Error(), "truncated") {
 		t.Fatal("truncated output must be rejected", err)
 	}
 	if creates != before {
@@ -262,7 +265,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, err := app.AskAI(path, scene, result.CheckpointID, "Wait", "", history, sessionID, "request-4")
+		_, err := app.AskAI(path, scene, result.CheckpointID, "Wait", "", history, sessionID, "request-4", "high")
 		done <- err
 	}()
 	select {
@@ -293,7 +296,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	if strings.Contains(string(data), "test-key") {
 		t.Fatal("trace leaked API key")
 	}
-	if _, err := app.AskAI(filepath.Join(app.root, "..", "outside.excalidraw"), `{"elements":[]}`, "", "edit", "", nil, sessionID, "request-5"); err == nil {
+	if _, err := app.AskAI(filepath.Join(app.root, "..", "outside.excalidraw"), `{"elements":[]}`, "", "edit", "", nil, sessionID, "request-5", "high"); err == nil {
 		t.Fatal("outside workspace request accepted")
 	}
 }

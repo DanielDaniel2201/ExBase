@@ -16,53 +16,58 @@ export function SettingsIcon() {
 
 export function SettingsModal({ onClose }) {
   const dialog = useRef();
+  const savedKey = useRef("");
+  const savePromise = useRef(null);
   const [key, setKey] = useState("");
-  const [configured, setConfigured] = useState(false);
-  const [reasoning, setReasoning] = useState("high");
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const savedKey = "••••••••••••••••";
 
   useEffect(() => {
     dialog.current.showModal();
     LoadAISettings().then((settings) => {
-      setConfigured(settings.hasAPIKey);
-      setReasoning(settings.reasoningEffort || "high");
-      if (settings.hasAPIKey) setKey(savedKey);
+      savedKey.current = settings.apiKey || "";
+      setKey(savedKey.current);
     }).catch((error) => setError(String(error)));
   }, []);
 
-  async function submit(event) {
-    event.preventDefault();
+  async function save() {
+    const value = key.trim();
+    if (value === savedKey.current) return true;
+    if (!value) { setError("Enter your DeepSeek API key"); return false; }
+    if (savePromise.current) return savePromise.current;
     setSaving(true); setError("");
-    try { await SaveAISettings(key === savedKey ? "" : key, reasoning); onClose(); }
-    catch (error) { setError(String(error)); }
-    finally { setSaving(false); }
+    savePromise.current = SaveAISettings(value, "high")
+      .then(() => { savedKey.current = value; setKey(value); return true; })
+      .catch((error) => { setError(String(error)); return false; })
+      .finally(() => { setSaving(false); savePromise.current = null; });
+    return savePromise.current;
   }
 
-  return <dialog ref={dialog} className="settings-modal" onCancel={onClose} onClick={(event) => { if (event.target === dialog.current) onClose(); }} aria-labelledby="settings-title">
+  async function close() {
+    if (await save()) onClose();
+  }
+
+  return <dialog ref={dialog} className="settings-modal" onCancel={(event) => { event.preventDefault(); close(); }} onClick={(event) => { if (event.target === dialog.current) close(); }} aria-labelledby="settings-title">
     <header className="settings-heading">
       <h2 id="settings-title">Settings</h2>
-      <button type="button" className="settings-close" onClick={onClose} aria-label="Close settings">×</button>
+      <button type="button" className="settings-close" onClick={close} aria-label="Close settings">×</button>
     </header>
     <div className="settings-content">
       <nav className="settings-nav" aria-label="Settings sections"><button type="button" className="active" aria-current="page">AI</button></nav>
-      <form className="settings-panel" onSubmit={submit}>
+      <div className="settings-panel">
         <h3>Model Provider</h3>
         <label htmlFor="deepseek-key">DeepSeek API Key</label>
         <div className="api-key-field">
-          <input id="deepseek-key" type={showKey ? "text" : "password"} value={key} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setKey(event.target.value)} placeholder="Enter your DeepSeek API key" autoComplete="off" spellCheck={false} required={!configured} disabled={saving} aria-describedby="provider-note" />
-          <button type="button" onClick={() => setShowKey(!showKey)} aria-label={showKey ? "Hide API key" : "Show API key"}>{showKey ? "Hide" : "Show"}</button>
+          <input id="deepseek-key" type={showKey ? "text" : "password"} value={key} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setKey(event.target.value)} onBlur={save} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} placeholder="Enter your DeepSeek API key" autoComplete="off" spellCheck={false} disabled={saving} />
+          <button type="button" onClick={() => setShowKey(!showKey)} aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}>
+            {showKey
+              ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m2 2 20 20" /><path d="M6.71 6.71C4.7 8.1 3.17 9.94 2.06 11.65a1 1 0 0 0 0 .7C4.01 15.36 7.57 19 12 19c1.44 0 2.77-.38 3.96-.99" /><path d="M10.73 5.08A7 7 0 0 1 12 5c4.43 0 7.99 3.64 9.94 6.65a1 1 0 0 1 0 .7 11.8 11.8 0 0 1-1.32 1.74" /><path d="M14.12 14.12A3 3 0 0 1 9.88 9.88" /></svg>
+              : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.06 12.35a1 1 0 0 1 0-.7C4.01 8.64 7.57 5 12 5s7.99 3.64 9.94 6.65a1 1 0 0 1 0 .7C19.99 15.36 16.43 19 12 19S4.01 15.36 2.06 12.35" /><circle cx="12" cy="12" r="3" /></svg>}
+          </button>
         </div>
-        <label htmlFor="reasoning-effort">Reasoning</label>
-        <select id="reasoning-effort" value={reasoning} onChange={(event) => setReasoning(event.target.value)} disabled={saving}>
-          <option value="none">None</option><option value="low">Low</option><option value="high">High</option><option value="max">Max</option>
-        </select>
-        <p id="provider-note" className="settings-note">Uses DeepSeek Flash through the official DeepSeek API. Your key is saved locally in ~/.exbase/auth.json.</p>
         {error && <p role="alert" className="error">{error}</p>}
-        <footer className="settings-actions"><button type="button" onClick={onClose}>Cancel</button><button type="submit" disabled={saving}>{saving ? "Saving…" : "Save"}</button></footer>
-      </form>
+      </div>
     </div>
   </dialog>;
 }
@@ -86,6 +91,7 @@ export function CanvasChat({ doc, api, aiPreview, onSettings }) {
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState([]);
   const [expanded, setExpanded] = useState(false);
+  const [mode, setMode] = useState("fast");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [previewing, setPreviewing] = useState(false);
@@ -95,6 +101,7 @@ export function CanvasChat({ doc, api, aiPreview, onSettings }) {
   const request = useRef(0);
   const running = useRef(false);
   const transcript = useRef();
+  const historyButton = useRef();
   const currentAPI = useRef(api);
   const canvasJob = useRef(null);
   currentAPI.current = api;
@@ -114,6 +121,14 @@ export function CanvasChat({ doc, api, aiPreview, onSettings }) {
     } catch (error) { await ResolveAICanvas(job.id, "", String(error)); }
   }), []);
   useEffect(() => { if (transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight; }, [messages, expanded, busy]);
+  useEffect(() => {
+    if (!expanded) return;
+    const close = (event) => {
+      if (!transcript.current?.contains(event.target) && !historyButton.current?.contains(event.target)) setExpanded(false);
+    };
+    document.addEventListener("pointerdown", close, true);
+    return () => document.removeEventListener("pointerdown", close, true);
+  }, [expanded]);
 
   function clearPreview(rollback = true) {
     const state = playback.current;
@@ -133,6 +148,7 @@ export function CanvasChat({ doc, api, aiPreview, onSettings }) {
   function cancel(message = "Request cancelled") { request.current++; CancelAI(); clearPreview(); running.current = false; setBusy(false); setError(message); }
 
   async function newChat() {
+    if (!messages.length) return;
     const id = ++request.current;
     const wasRunning = running.current;
     clearPreview();
@@ -215,7 +231,7 @@ export function CanvasChat({ doc, api, aiPreview, onSettings }) {
           // A partial preview may have unresolved bindings; the final result is validated below.
         }
       });
-      const result = await AskAI(doc.path, scene, checkpoint.current, text, screenshot, messages.slice(-12), session.current, requestID);
+      const result = await AskAI(doc.path, scene, checkpoint.current, text, screenshot, messages.slice(-12), session.current, requestID, mode === "fast" ? "none" : "high");
       if (id !== request.current) return;
       if (currentAPI.current !== api) throw new Error("The document changed. Send your request again.");
       if (!playback.current && sceneSignature(api.getSceneElements()) !== signature) {
@@ -243,24 +259,24 @@ export function CanvasChat({ doc, api, aiPreview, onSettings }) {
   const lastReply = [...messages].reverse().find((message) => message.role === "assistant")?.content;
   return <div className="canvas-chat">
     {expanded && <div className="chat-transcript" ref={transcript} role="log" aria-label="AI conversation">
-      <div className="chat-transcript-heading"><span>DeepSeek Flash</span><button type="button" onClick={() => setExpanded(false)} aria-label="Close conversation">×</button></div>
       {!messages.length && <p className="chat-empty">Ask about this canvas or describe an edit.</p>}
       {messages.map((message, index) => <div key={index} className={`chat-message ${message.role}`}><small>{message.role === "user" ? "You" : "AI"}</small><p>{message.content}</p></div>)}
       {busy && <p className="chat-empty" role="status">{previewing ? "Drawing…" : "Working…"}</p>}
     </div>}
     {error && <div className="chat-error" role="alert">{error}<button type="button" onClick={() => setError("")} aria-label="Dismiss error">×</button></div>}
     <div className="chat-composer">
-      <form className="chat-input-bar" onSubmit={send}>
-      <button type="button" className="chat-history-button" onClick={() => setExpanded(!expanded)} aria-label="Toggle conversation" aria-expanded={expanded} title={lastReply || "Conversation"}>
+      <button ref={historyButton} type="button" className="chat-side-button chat-history-button" onClick={() => setExpanded(!expanded)} aria-label="Toggle conversation" aria-expanded={expanded} title={lastReply || "Conversation"}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>
         {lastReply && !expanded && <span className="chat-reply-dot" />}
       </button>
+      <form className="chat-input-bar" onSubmit={send}>
       <input aria-label="Message DeepSeek" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={busy ? (previewing ? "Drawing on this canvas…" : "AI is working on this canvas…") : "Ask AI about this canvas…"} disabled={busy || !api} maxLength={16000} />
+      <button type="button" className="chat-mode-button" onClick={() => setMode(mode === "fast" ? "stable" : "fast")} disabled={busy || !api} aria-label={`AI mode: ${mode}`} aria-pressed={mode === "stable"} title={mode === "fast" ? "Fast: no thinking" : "Stable: high thinking"}>{mode}</button>
       {busy ? <button type="button" onClick={() => cancel()} aria-label="Cancel AI request">Stop</button> : <button type="submit" disabled={!api || !prompt.trim()} aria-label="Send message" title="Send message">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" /><path d="m21.854 2.147-10.94 10.939" /></svg>
       </button>}
       </form>
-      <button type="button" className="chat-new-button" onClick={newChat} disabled={!api} aria-label="New chat" title="New chat">
+      <button type="button" className="chat-side-button" onClick={newChat} disabled={!api || !messages.length} aria-label="New chat" title="New chat">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
       </button>
     </div>

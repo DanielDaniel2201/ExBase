@@ -55,11 +55,7 @@ func (a *App) CreateAISession(path string) (string, error) {
 	}
 	defer file.Close()
 	trace := &aiTrace{file: file, sessionID: id}
-	config, err := loadAIConfig()
-	if err != nil {
-		return "", err
-	}
-	if err := trace.write("session_start", map[string]any{"document_path": path, "model": "deepseek-flash", "reasoning_effort": config.ReasoningEffort}); err != nil {
+	if err := trace.write("session_start", map[string]any{"document_path": path, "model": "deepseek-flash"}); err != nil {
 		return "", err
 	}
 	return id, nil

@@ -22,6 +22,7 @@ const excalidrawMCPURL = "https://mcp.excalidraw.com/mcp"
 
 type AISettings struct {
 	HasAPIKey       bool   `json:"hasAPIKey"`
+	APIKey          string `json:"apiKey"`
 	ReasoningEffort string `json:"reasoningEffort"`
 }
 type aiConfig struct {
@@ -46,7 +47,7 @@ func authFile() (string, error) {
 }
 
 func validReasoningEffort(effort string) bool {
-	return effort == "none" || effort == "low" || effort == "high" || effort == "max"
+	return effort == "none" || effort == "high"
 }
 
 func applyReasoning(body map[string]any, effort string) {
@@ -94,7 +95,7 @@ func (a *App) LoadAISettings() (AISettings, error) {
 	a.aiMu.Lock()
 	defer a.aiMu.Unlock()
 	config, err := loadAIConfig()
-	return AISettings{HasAPIKey: config.APIKey != "", ReasoningEffort: config.ReasoningEffort}, err
+	return AISettings{HasAPIKey: config.APIKey != "", APIKey: config.APIKey, ReasoningEffort: config.ReasoningEffort}, err
 }
 
 func (a *App) SaveAISettings(key, reasoningEffort string) (AISettings, error) {
@@ -143,7 +144,7 @@ func (a *App) SaveAISettings(key, reasoningEffort string) (AISettings, error) {
 	if err := os.Rename(file.Name(), path); err != nil {
 		return AISettings{}, err
 	}
-	return AISettings{HasAPIKey: key != "", ReasoningEffort: reasoningEffort}, nil
+	return AISettings{HasAPIKey: key != "", APIKey: key, ReasoningEffort: reasoningEffort}, nil
 }
 
 func (a *App) CancelAI() {
@@ -312,12 +313,15 @@ func toolText(result mcpResult) string {
 	return strings.Join(parts, "\n")
 }
 
-func (a *App) AskAI(path, scene, checkpoint, prompt, screenshot string, history []ChatMessage, sessionID, requestID string) (result AIResult, err error) {
+func (a *App) AskAI(path, scene, checkpoint, prompt, screenshot string, history []ChatMessage, sessionID, requestID, reasoningEffort string) (result AIResult, err error) {
 	if !a.contains(path) || !strings.EqualFold(filepath.Ext(path), ".excalidraw") {
 		return AIResult{}, errors.New("open an Excalidraw document first")
 	}
 	if len(scene) > 5<<20 || len(screenshot) > 4<<20 || len(prompt) > 16000 || len(requestID) > 64 || strings.TrimSpace(prompt) == "" {
 		return AIResult{}, errors.New("invalid or oversized AI request")
+	}
+	if !validReasoningEffort(reasoningEffort) {
+		return AIResult{}, errors.New("choose fast or stable AI mode")
 	}
 	var current struct {
 		Elements []map[string]any `json:"elements"`
@@ -361,7 +365,7 @@ func (a *App) AskAI(path, scene, checkpoint, prompt, screenshot string, history 
 			err = logErr
 		}
 	}()
-	if err := trace.write("turn_start", map[string]any{"document_path": path, "prompt": prompt, "checkpoint_id": checkpoint, "element_count": len(current.Elements), "screenshot_bytes": len(screenshot)}); err != nil {
+	if err := trace.write("turn_start", map[string]any{"document_path": path, "prompt": prompt, "checkpoint_id": checkpoint, "element_count": len(current.Elements), "screenshot_bytes": len(screenshot), "reasoning_effort": reasoningEffort}); err != nil {
 		return AIResult{}, err
 	}
 	client := &http.Client{}
@@ -473,7 +477,7 @@ func (a *App) AskAI(path, scene, checkpoint, prompt, screenshot string, history 
 	}
 	for round := 0; round < 10; round++ {
 		requestBody := map[string]any{"model": "deepseek-flash", "messages": messages, "tools": tools, "stream": true, "stream_options": map[string]bool{"include_usage": true}}
-		applyReasoning(requestBody, config.ReasoningEffort)
+		applyReasoning(requestBody, reasoningEffort)
 		body, _ := json.Marshal(requestBody)
 		if err := trace.write("llm_request", map[string]any{"round": round + 1, "request": json.RawMessage(body)}); err != nil {
 			return AIResult{}, err

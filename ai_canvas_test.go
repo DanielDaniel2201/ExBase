@@ -174,7 +174,7 @@ func TestAgentMixesManagedAndNativeTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := app.AskAI(path, `{"elements":[]}`, "", "Create a flowchart and a circuit", "", nil, session, "mixed-tools")
+	result, err := app.AskAI(path, `{"elements":[]}`, "", "Create a flowchart and a circuit", "", nil, session, "mixed-tools", "high")
 	if err != nil || bridgeCalls != 2 || rounds != 4 || !strings.Contains(string(result.Elements), "circuit") || !strings.Contains(string(result.Elements), "flow-A") {
 		t.Fatal("mixed tool state was lost", result, err)
 	}

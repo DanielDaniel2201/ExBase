@@ -135,7 +135,7 @@ func TestLiveAIProgress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := app.AskAI(path, `{"elements":[]}`, "", "Draw a compact four-node pipeline: Input, Hidden 1, Hidden 2, Output. Use rounded rectangles, three arrows connecting them from left to right, and separate labels. Output nodes first, then connections, then labels. Keep it simple.", "", nil, session, "live-preview-check")
+	result, err := app.AskAI(path, `{"elements":[]}`, "", "Draw a compact four-node pipeline: Input, Hidden 1, Hidden 2, Output. Use rounded rectangles, three arrows connecting them from left to right, and separate labels. Output nodes first, then connections, then labels. Keep it simple.", "", nil, session, "live-preview-check", "high")
 	if err != nil {
 		t.Fatal(err)
 	}
