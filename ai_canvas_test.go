@@ -71,6 +71,7 @@ func TestAgentMixesManagedAndNativeTools(t *testing.T) {
 	}
 	compiled := []map[string]any{{"id": "flow-A", "type": "rectangle", "x": float64(0), "y": float64(0), "version": float64(1), "customData": map[string]any{"exbaseMermaid": map[string]any{"id": "flow", "active": true, "source": "flowchart LR\nA-->B", "members": []any{"flow-A"}}}}}
 	bridgeCalls, rounds := 0, 0
+	var systemPrompt string
 	state := []map[string]any{}
 	app.canvasEmit = func(request AICanvasRequest) {
 		bridgeCalls++
@@ -94,11 +95,17 @@ func TestAgentMixesManagedAndNativeTools(t *testing.T) {
 		var body map[string]any
 		json.NewDecoder(r.Body).Decode(&body)
 		if r.URL.Path == "/chat" {
-			rounds++
 			messages := body["messages"].([]any)
-			if rounds > 1 && !strings.Contains(messages[0].(map[string]any)["content"].(string), "flow-A") {
-				t.Error("system canvas context is stale")
+			system := messages[0].(map[string]any)["content"].(string)
+			if systemPrompt == "" {
+				systemPrompt = system
+			} else if system != systemPrompt {
+				t.Error("system prompt changed and broke the cache prefix")
 			}
+			if rounds > 0 && !strings.Contains(messages[len(messages)-1].(map[string]any)["content"].(string), "flow-A") {
+				t.Error("tool result canvas context is stale")
+			}
+			rounds++
 			var name string
 			var args any
 			switch rounds {

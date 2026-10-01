@@ -436,7 +436,7 @@ func (a *App) AskAI(path, scene, checkpoint, prompt, screenshot string, history 
 		map[string]any{"type": "function", "function": map[string]any{"name": "draw_mermaid", "description": "Create or replace an editable flowchart using Mermaid. For replacement, first read_canvas and supply the active diagramId; omit it only to create a new diagram. Returns current canvas state for further native drawing in the same turn.", "parameters": json.RawMessage(`{"type":"object","properties":{"source":{"type":"string","maxLength":16000},"diagramId":{"type":"string"},"x":{"type":"number"},"y":{"type":"number"}},"required":["source"],"additionalProperties":false}`)}},
 		map[string]any{"type": "function", "function": map[string]any{"name": "read_canvas", "description": "Inspect current elements and managed diagram IDs. Supply diagramId to read its current Mermaid source and elements. Detached source is never returned. If nextOffset is returned, pass it as offset to read more elements.", "parameters": json.RawMessage(`{"type":"object","properties":{"diagramId":{"type":"string"},"offset":{"type":"integer","minimum":0}},"additionalProperties":false}`)}},
 	)
-	messages := []map[string]any{{"role": "system", "content": canvasPrompt(checkpoint, current.Elements, toolText(guide))}}
+	messages := []map[string]any{{"role": "system", "content": canvasPrompt(toolText(guide))}}
 	if len(history) > 12 {
 		history = history[len(history)-12:]
 	}
@@ -449,6 +449,7 @@ func (a *App) AskAI(path, scene, checkpoint, prompt, screenshot string, history 
 			messages = append(messages, message)
 		}
 	}
+	messages = append(messages, map[string]any{"role": "user", "content": canvasContext(checkpoint, current.Elements)})
 	var content any = prompt
 	if screenshot != "" {
 		if !strings.HasPrefix(screenshot, "data:image/png;base64,") {
@@ -571,8 +572,7 @@ func (a *App) AskAI(path, scene, checkpoint, prompt, screenshot string, history 
 						if err := emitPreview(current.Elements); err != nil {
 							return AIResult{}, err
 						}
-						output = "Canvas updated. " + readCanvas(current.Elements, nil)
-						messages[0]["content"] = canvasPrompt(checkpoint, current.Elements, toolText(guide))
+						output = "Canvas updated. Current checkpoint: " + checkpoint + ". " + readCanvas(current.Elements, nil)
 					}
 				}
 			} else {
@@ -623,7 +623,6 @@ func (a *App) AskAI(path, scene, checkpoint, prompt, screenshot string, history 
 					if err := emitPreview(current.Elements); err != nil {
 						return AIResult{}, err
 					}
-					messages[0]["content"] = canvasPrompt(checkpoint, current.Elements, toolText(guide))
 					output = "Canvas updated. Current checkpoint: " + checkpoint + ". " + readCanvas(current.Elements, nil)
 				}
 			}

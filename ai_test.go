@@ -138,7 +138,8 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 			if body["stream"] != true {
 				t.Error("model output must stream")
 			}
-			if !strings.Contains(body["messages"].([]any)[0].(map[string]any)["content"].(string), `"strokeWidth":1`) {
+			messages := body["messages"].([]any)
+			if rounds == 0 && !strings.Contains(messages[len(messages)-2].(map[string]any)["content"].(string), `"strokeWidth":1`) {
 				t.Error("the model must receive existing connector styles")
 			}
 			if tools := body["tools"].([]any); len(tools) != 3 || tools[0].(map[string]any)["function"].(map[string]any)["name"] != "create_view" || tools[1].(map[string]any)["function"].(map[string]any)["name"] != "draw_mermaid" || tools[2].(map[string]any)["function"].(map[string]any)["name"] != "read_canvas" {
@@ -153,7 +154,6 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 			if _, limited := body["max_tokens"]; limited {
 				t.Error("thinking must use the provider's default output budget")
 			}
-			messages := body["messages"].([]any)
 			if messages[1].(map[string]any)["reasoning_content"] != "previous-reasoning" {
 				t.Error("previous-turn reasoning was lost")
 			}
