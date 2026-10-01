@@ -488,7 +488,7 @@ export default function App() {
     </Titlebar>
     <section className="canvas">
       {doc
-        ? <Excalidraw key={`canvas:${doc.path}`} initialData={doc.scene} excalidrawAPI={setApi} onChange={autosave} />
+        ? <Excalidraw key={`canvas:${doc.path}`} initialData={{ ...doc.scene, scrollToContent: true }} excalidrawAPI={setApi} onChange={autosave} />
         : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an <PencilRulerIcon /> Excalidraw file from the sidebar.<br />Or double-click to create a new one.</p></div>}
       {doc && <CanvasChat key={`chat:${doc.path}`} doc={doc} api={api} aiPreview={aiPreview} onSettings={() => setSettingsOpen(true)} />}
     </section>
