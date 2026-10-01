@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
+import { CaptureUpdateAction, Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
 import {
   ChooseFolder, CreateDocument, CreateFolder, DeleteEntry, OpenDocument, ReadDirectory, Rename, Save, SwitchFolder, Workspaces,
 } from "../wailsjs/go/main/App";
 import { Quit, WindowMinimise, WindowToggleMaximise } from "../wailsjs/runtime/runtime";
 import { parseScene } from "./scene";
+import { reconcileMermaid } from "./mermaid";
 import { CanvasChat, SettingsIcon, SettingsModal } from "./AI";
 
 function basename(path) {
@@ -366,7 +367,7 @@ export default function App() {
   async function save() {
     clearTimeout(autosaveTimer.current);
     const elements = aiPreview.current?.api === api ? aiPreview.current.original : api.getSceneElements();
-    const data = serializeAsJSON(elements, api.getAppState(), api.getFiles(), "local");
+    const data = serializeAsJSON(reconcileMermaid(elements), api.getAppState(), api.getFiles(), "local");
     await Save(doc.path, data);
     lastSaved.current = data;
     setStatus("Saved");
@@ -374,6 +375,12 @@ export default function App() {
 
   function autosave(elements, appState, files) {
     if (aiPreview.current?.api === api) { clearTimeout(autosaveTimer.current); return; }
+    const reconciled = reconcileMermaid(elements);
+    if (reconciled !== elements && api) {
+      api.updateScene({ elements: reconciled, captureUpdate: CaptureUpdateAction.NEVER });
+      return;
+    }
+    elements = reconciled;
     const data = serializeAsJSON(elements, appState, files, "local");
     if (data === lastSaved.current) return;
     clearTimeout(autosaveTimer.current);
@@ -481,9 +488,9 @@ export default function App() {
     </Titlebar>
     <section className="canvas">
       {doc
-        ? <Excalidraw key={doc.path} initialData={doc.scene} excalidrawAPI={setApi} onChange={autosave} />
+        ? <Excalidraw key={`canvas:${doc.path}`} initialData={doc.scene} excalidrawAPI={setApi} onChange={autosave} />
         : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an <PencilRulerIcon /> Excalidraw file from the sidebar.<br />Or double-click to create a new one.</p></div>}
-      {doc && <CanvasChat key={doc.path} doc={doc} api={api} aiPreview={aiPreview} onSettings={() => setSettingsOpen(true)} />}
+      {doc && <CanvasChat key={`chat:${doc.path}`} doc={doc} api={api} aiPreview={aiPreview} onSettings={() => setSettingsOpen(true)} />}
     </section>
     {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
   </main>;

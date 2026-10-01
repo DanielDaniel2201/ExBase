@@ -123,7 +123,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 			if !strings.Contains(body["messages"].([]any)[0].(map[string]any)["content"].(string), `"strokeWidth":1`) {
 				t.Error("the model must receive existing connector styles")
 			}
-			if tools := body["tools"].([]any); len(tools) != 1 || tools[0].(map[string]any)["function"].(map[string]any)["name"] != "create_view" {
+			if tools := body["tools"].([]any); len(tools) != 3 || tools[0].(map[string]any)["function"].(map[string]any)["name"] != "create_view" || tools[1].(map[string]any)["function"].(map[string]any)["name"] != "draw_mermaid" || tools[2].(map[string]any)["function"].(map[string]any)["name"] != "read_canvas" {
 				t.Error("model should not need a read_me round")
 			}
 			if body["model"] != "deepseek-flash" {
@@ -205,7 +205,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 				}
 				result = map[string]any{"content": []any{}, "structuredContent": map[string]string{"checkpointId": "checkpoint"}}
 			case "read_checkpoint":
-				result = map[string]any{"content": []any{map[string]string{"type": "text", "text": `{"elements":[{"id":"original","type":"rectangle","x":0,"y":0,"version":1},{"id":"new","type":"rectangle","x":10,"y":20}]}`}}}
+				result = map[string]any{"content": []any{map[string]string{"type": "text", "text": `{"elements":[{"id":"original","type":"arrow","x":0,"y":0,"version":1,"strokeWidth":1,"endArrowhead":null},{"id":"new","type":"arrow","x":10,"y":20,"strokeWidth":1,"endArrowhead":null}]}`}}}
 			default:
 				t.Error("unexpected tool")
 			}

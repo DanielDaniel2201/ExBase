@@ -15,11 +15,13 @@ import (
 )
 
 type App struct {
-	ctx      context.Context
-	root     string
-	folders  []string
-	aiMu     sync.Mutex
-	aiCancel context.CancelFunc
+	ctx        context.Context
+	root       string
+	folders    []string
+	aiMu       sync.Mutex
+	aiCancel   context.CancelFunc
+	aiCanvas   *aiCanvasPending
+	canvasEmit func(AICanvasRequest)
 }
 
 type Document struct {

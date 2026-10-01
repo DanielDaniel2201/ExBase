@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { CaptureUpdateAction, convertToExcalidrawElements, exportToBlob, hashString, restore, serializeAsJSON } from "@excalidraw/excalidraw";
-import { AskAI, CancelAI, CreateAISession, LoadAISettings, SaveAISettings } from "../wailsjs/go/main/App";
+import { AskAI, CancelAI, CreateAISession, LoadAISettings, SaveAISettings, ResolveAICanvas } from "../wailsjs/go/main/App";
 import { EventsOn } from "../wailsjs/runtime/runtime";
+import { materializeCanvas, reconcileMermaid, renderMermaid } from "./mermaid";
 import { nextPreviewElements, rebasePreviewEdits, sceneSignature, splitMCPElements } from "./scene";
 
 // Lucide Settings (ISC), kept inline like the existing sidebar icons.
@@ -87,9 +88,23 @@ export function CanvasChat({ doc, api, aiPreview, onSettings }) {
   const running = useRef(false);
   const transcript = useRef();
   const currentAPI = useRef(api);
+  const canvasJob = useRef(null);
   currentAPI.current = api;
 
   useEffect(() => () => { request.current++; if (running.current) CancelAI(); clearPreview(false); }, []);
+  useEffect(() => EventsOn("ai:canvas", async (job) => {
+    const turn = canvasJob.current;
+    if (!turn) return;
+    const unchanged = () => turn.id === request.current && currentAPI.current === turn.api && (playback.current
+      ? sceneSignature(turn.api.getSceneElementsIncludingDeleted()) === sceneSignature(playback.current.shown)
+      : sceneSignature(turn.api.getSceneElements()) === turn.signature);
+    try {
+      if (!unchanged()) throw new Error("The canvas changed while AI was working. Send your request again.");
+      const elements = job.kind === "mermaid" ? await renderMermaid(job) : await materializeCanvas(job.elements, job.previous);
+      if (!unchanged()) throw new Error("The canvas changed while AI was working. Send your request again.");
+      await ResolveAICanvas(job.id, JSON.stringify(elements), "");
+    } catch (error) { await ResolveAICanvas(job.id, "", String(error)); }
+  }), []);
   useEffect(() => { if (transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight; }, [messages, expanded, busy]);
 
   function clearPreview(rollback = true) {
@@ -136,8 +151,9 @@ export function CanvasChat({ doc, api, aiPreview, onSettings }) {
       const settings = await LoadAISettings();
       if (id !== request.current) return;
       if (!settings.hasAPIKey) { onSettings(); return; }
-      const elements = api.getSceneElements();
-      const signature = sceneSignature(elements);
+      const originalElements = api.getSceneElements();
+      const elements = reconcileMermaid(originalElements);
+      const signature = sceneSignature(originalElements);
       const files = api.getFiles();
       const appState = api.getAppState();
       const scene = serializeAsJSON(elements, appState, files, "local");
@@ -154,6 +170,7 @@ export function CanvasChat({ doc, api, aiPreview, onSettings }) {
       }
       setPrompt("");
       setMessages((previous) => [...previous, { role: "user", content: text }]);
+      canvasJob.current = { id, api, signature };
       const requestID = `${session.current}-${id}`;
       function tick() {
         const state = playback.current;
@@ -198,18 +215,21 @@ export function CanvasChat({ doc, api, aiPreview, onSettings }) {
         throw new Error("The canvas changed while AI was working. Your edits were kept; send your request again.");
       }
       if (result.elements) {
-        const updated = restoreMCPElements(result.elements);
+        const updated = reconcileMermaid(restoreMCPElements(result.elements), elements);
         queuePreview(updated);
         if (playback.current?.timer) await new Promise((resolve) => { playback.current.resolve = resolve; });
         if (id !== request.current || currentAPI.current !== api) return;
         // Reset the history baseline synchronously, then commit the complete AI edit once.
         flushSync(() => clearPreview());
         api.updateScene({ elements: updated, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+        const previousDiagrams = new Set(elements.map((element) => element.customData?.exbaseMermaid?.id).filter(Boolean));
+        const created = updated.filter((element) => element.customData?.exbaseMermaid?.active && !previousDiagrams.has(element.customData.exbaseMermaid.id));
+        if (created.length && !elements.length) api.scrollToContent(created, { fitToContent: true, animate: true });
       }
       checkpoint.current = result.checkpointId;
       setMessages((previous) => [...previous, { role: "assistant", content: result.reply || "Canvas updated.", reasoning_content: result.reasoningContent || "" }]);
     } catch (error) { if (id === request.current) { setError(String(error)); setPrompt(text); } }
-    finally { unsubscribe?.(); if (id === request.current) { clearPreview(); running.current = false; setBusy(false); } }
+    finally { unsubscribe?.(); if (canvasJob.current?.id === id) canvasJob.current = null; if (id === request.current) { clearPreview(); running.current = false; setBusy(false); } }
   }
 
   const lastReply = [...messages].reverse().find((message) => message.role === "assistant")?.content;
