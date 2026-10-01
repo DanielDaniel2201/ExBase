@@ -16,6 +16,21 @@ func writeAIChunk(w io.Writer, delta map[string]any, finish string) {
 	fmt.Fprintf(w, "data: %s\n\n", data)
 }
 
+func TestConnectorStyleInheritance(t *testing.T) {
+	base := []map[string]any{{"type": "line", "strokeWidth": 1., "strokeColor": "#495057", "endArrowhead": nil}}
+	style := aiConnectorStyle(base)
+	for _, change := range []bool{false, true} {
+		edits := []map[string]any{{"type": "arrow", "endArrowhead": "arrow"}}
+		inheritAIConnectorStyle(edits, style, change)
+		if edits[0]["strokeWidth"] != 1. || (edits[0]["endArrowhead"] == "arrow") != change {
+			t.Fatal("style must be inherited unless explicitly requested", edits)
+		}
+	}
+	if !changeAIConnectorStyle(`{"changeConnectorStyle":true,"elements":"[`) || !changeAIConnectorStyle(`{"elements":"[]","changeConnectorStyle":true}`) || changeAIConnectorStyle(`{"elements":"[`) {
+		t.Fatal("style option must work for complete and partial arguments")
+	}
+}
+
 func TestAIStreamPreviewsBeforeCompletion(t *testing.T) {
 	reader, writer := io.Pipe()
 	defer reader.Close()
@@ -26,7 +41,7 @@ func TestAIStreamPreviewsBeforeCompletion(t *testing.T) {
 		err      error
 	}, 1)
 	go func() {
-		response, err := decodeAIResponse(reader, true, func(elements []map[string]any) error { previews <- elements; return nil })
+		response, err := decodeAIResponse(reader, true, func(elements []map[string]any, _ bool) error { previews <- elements; return nil })
 		done <- struct {
 			response aiResponse
 			err      error

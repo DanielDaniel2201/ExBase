@@ -195,6 +195,7 @@ export default function App() {
   const picker = useRef();
   const autosaveTimer = useRef();
   const lastSaved = useRef("");
+  const aiPreview = useRef(null);
 
   useEffect(() => {
     Workspaces().then((state) => state.current && applyWorkspace(state)).catch((error) => setStatus(String(error)));
@@ -364,13 +365,15 @@ export default function App() {
 
   async function save() {
     clearTimeout(autosaveTimer.current);
-    const data = serializeAsJSON(api.getSceneElements(), api.getAppState(), api.getFiles(), "local");
+    const elements = aiPreview.current?.api === api ? aiPreview.current.original : api.getSceneElements();
+    const data = serializeAsJSON(elements, api.getAppState(), api.getFiles(), "local");
     await Save(doc.path, data);
     lastSaved.current = data;
     setStatus("Saved");
   }
 
   function autosave(elements, appState, files) {
+    if (aiPreview.current?.api === api) { clearTimeout(autosaveTimer.current); return; }
     const data = serializeAsJSON(elements, appState, files, "local");
     if (data === lastSaved.current) return;
     clearTimeout(autosaveTimer.current);
@@ -480,7 +483,7 @@ export default function App() {
       {doc
         ? <Excalidraw key={doc.path} initialData={doc.scene} excalidrawAPI={setApi} onChange={autosave} />
         : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an <PencilRulerIcon /> Excalidraw file from the sidebar.<br />Or double-click to create a new one.</p></div>}
-      {doc && <CanvasChat key={doc.path} doc={doc} api={api} onSettings={() => setSettingsOpen(true)} />}
+      {doc && <CanvasChat key={doc.path} doc={doc} api={api} aiPreview={aiPreview} onSettings={() => setSettingsOpen(true)} />}
     </section>
     {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
   </main>;

@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
-import { CaptureUpdateAction, convertToExcalidrawElements, exportToBlob, exportToSvg, getCommonBounds, hashString, restore, serializeAsJSON } from "@excalidraw/excalidraw";
+import { flushSync } from "react-dom";
+import { CaptureUpdateAction, convertToExcalidrawElements, exportToBlob, hashString, restore, serializeAsJSON } from "@excalidraw/excalidraw";
 import { AskAI, CancelAI, CreateAISession, LoadAISettings, SaveAISettings } from "../wailsjs/go/main/App";
 import { EventsOn } from "../wailsjs/runtime/runtime";
-import { sceneSignature, splitMCPElements } from "./scene";
+import { nextPreviewElements, rebasePreviewEdits, sceneSignature, splitMCPElements } from "./scene";
 
 // Lucide Settings (ISC), kept inline like the existing sidebar icons.
 export function SettingsIcon() {
@@ -68,18 +69,18 @@ function blobDataURL(blob) {
 
 function restoreMCPElements(elements) {
   const { standard, shorthand } = splitMCPElements(elements);
-  const converted = convertToExcalidrawElements(shorthand.map((element) => ({ ...element, seed: element.seed ?? hashString(element.id) })), { regenerateIds: false });
+  const converted = convertToExcalidrawElements(shorthand.map((element) => ({ ...element, seed: element.seed ?? hashString(element.id), ...(element.label && { label: { ...element.label, id: element.label.id ?? `ai-label-${element.id}` } }) })), { regenerateIds: false });
   return restore({ elements: [...standard, ...converted] }, null, null, { repairBindings: true }).elements;
 }
 
-export function CanvasChat({ doc, api, onSettings }) {
+export function CanvasChat({ doc, api, aiPreview, onSettings }) {
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState([]);
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [previewing, setPreviewing] = useState(false);
-  const previewLayer = useRef();
+  const playback = useRef(null);
   const checkpoint = useRef("");
   const session = useRef("");
   const request = useRef(0);
@@ -88,12 +89,25 @@ export function CanvasChat({ doc, api, onSettings }) {
   const currentAPI = useRef(api);
   currentAPI.current = api;
 
-  useEffect(() => () => { request.current++; if (running.current) CancelAI(); }, []);
+  useEffect(() => () => { request.current++; if (running.current) CancelAI(); clearPreview(false); }, []);
   useEffect(() => { if (transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight; }, [messages, expanded, busy]);
 
-  function clearPreview() { setPreviewing(false); previewLayer.current?.replaceChildren(); }
+  function clearPreview(rollback = true) {
+    const state = playback.current;
+    if (!state) return;
+    clearTimeout(state.timer);
+    state.unwatch();
+    playback.current = null;
+    if (aiPreview.current === state) aiPreview.current = null;
+    if (rollback) {
+      const elements = rebasePreviewEdits(state.original, state.shown, state.api.getSceneElementsIncludingDeleted());
+      state.api.updateScene({ elements, captureUpdate: CaptureUpdateAction.NEVER });
+    }
+    state.resolve?.();
+    setPreviewing(false);
+  }
 
-  function cancel() { request.current++; CancelAI(); clearPreview(); running.current = false; setBusy(false); setError("Request cancelled"); }
+  function cancel(message = "Request cancelled") { request.current++; CancelAI(); clearPreview(); running.current = false; setBusy(false); setError(message); }
 
   async function newChat() {
     const id = ++request.current;
@@ -118,7 +132,6 @@ export function CanvasChat({ doc, api, onSettings }) {
     running.current = true; setBusy(true); setError("");
     const text = prompt.trim();
     let unsubscribe;
-    let previewVersion = 0;
     try {
       const settings = await LoadAISettings();
       if (id !== request.current) return;
@@ -142,52 +155,65 @@ export function CanvasChat({ doc, api, onSettings }) {
       setPrompt("");
       setMessages((previous) => [...previous, { role: "user", content: text }]);
       const requestID = `${session.current}-${id}`;
-      unsubscribe = EventsOn("ai:preview", async (update) => {
-        if (update.requestId !== requestID || update.path !== doc.path || id !== request.current || !running.current || currentAPI.current !== api) return;
-        const version = ++previewVersion;
-        try {
-          const updated = restoreMCPElements(update.elements);
-          const visible = updated.filter((element) => !element.isDeleted);
-          const state = api.getAppState();
-          const svg = await exportToSvg({ elements: visible, files, exportPadding: 0, appState: { ...state, exportBackground: false, exportEmbedScene: false, exportWithDarkMode: state.theme === "dark" } });
-          if (version !== previewVersion || id !== request.current || !running.current || currentAPI.current !== api || !previewLayer.current) return;
-          if (sceneSignature(api.getSceneElements()) !== signature) { clearPreview(); return; }
-          const [x, y] = visible.length ? getCommonBounds(visible) : [0, 0];
-          const zoom = state.zoom.value;
-          svg.style.position = "absolute";
-          svg.style.left = `${(x + state.scrollX) * zoom}px`;
-          svg.style.top = `${(y + state.scrollY) * zoom}px`;
-          svg.style.transform = `scale(${zoom})`;
-          svg.style.transformOrigin = "top left";
-          previewLayer.current.style.background = state.viewBackgroundColor;
-          previewLayer.current.replaceChildren(svg);
+      function tick() {
+        const state = playback.current;
+        if (!state || id !== request.current) return;
+        const next = nextPreviewElements(state.shown, state.target);
+        if (!next) { state.timer = null; state.resolve?.(); state.resolve = null; return; }
+        state.applying = true;
+        api.updateScene({ elements: structuredClone(next), captureUpdate: CaptureUpdateAction.NEVER });
+        state.shown = structuredClone(api.getSceneElementsIncludingDeleted());
+        state.applying = false;
+        state.timer = setTimeout(tick, 140);
+      }
+      function queuePreview(target) {
+        if (id !== request.current || currentAPI.current !== api) return;
+        if (!playback.current) {
+          if (sceneSignature(api.getSceneElements()) !== signature) return;
+          const original = structuredClone(api.getSceneElementsIncludingDeleted());
+          const state = { api, original, shown: original, target, timer: null, applying: false, unwatch: () => {} };
+          playback.current = state;
+          aiPreview.current = state;
+          state.unwatch = api.onChange(() => {
+            if (!state.applying && playback.current === state && sceneSignature(api.getSceneElementsIncludingDeleted()) !== sceneSignature(state.shown)) cancel("The canvas changed while AI was working. Your edits were kept.");
+          });
           setPreviewing(true);
+        }
+        playback.current.target = target;
+        if (!playback.current.timer) tick();
+      }
+      unsubscribe = EventsOn("ai:preview", (update) => {
+        if (update.requestId !== requestID || update.path !== doc.path || id !== request.current || !running.current || currentAPI.current !== api) return;
+        try {
+          queuePreview(restoreMCPElements(update.elements));
         } catch {
           // A partial preview may have unresolved bindings; the final result is validated below.
         }
       });
       const result = await AskAI(doc.path, scene, checkpoint.current, text, screenshot, messages.slice(-12), session.current, requestID);
       if (id !== request.current) return;
-      previewVersion++;
       if (currentAPI.current !== api) throw new Error("The document changed. Send your request again.");
-      if (sceneSignature(api.getSceneElements()) !== signature) {
+      if (!playback.current && sceneSignature(api.getSceneElements()) !== signature) {
         checkpoint.current = "";
         throw new Error("The canvas changed while AI was working. Your edits were kept; send your request again.");
       }
       if (result.elements) {
         const updated = restoreMCPElements(result.elements);
+        queuePreview(updated);
+        if (playback.current?.timer) await new Promise((resolve) => { playback.current.resolve = resolve; });
+        if (id !== request.current || currentAPI.current !== api) return;
+        // Reset the history baseline synchronously, then commit the complete AI edit once.
+        flushSync(() => clearPreview());
         api.updateScene({ elements: updated, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
       }
       checkpoint.current = result.checkpointId;
       setMessages((previous) => [...previous, { role: "assistant", content: result.reply || "Canvas updated.", reasoning_content: result.reasoningContent || "" }]);
     } catch (error) { if (id === request.current) { setError(String(error)); setPrompt(text); } }
-    finally { previewVersion++; unsubscribe?.(); if (id === request.current) { clearPreview(); running.current = false; setBusy(false); } }
+    finally { unsubscribe?.(); if (id === request.current) { clearPreview(); running.current = false; setBusy(false); } }
   }
 
   const lastReply = [...messages].reverse().find((message) => message.role === "assistant")?.content;
-  return <>
-  <div ref={previewLayer} className="ai-canvas-preview" hidden={!previewing} role="img" aria-label="AI drawing preview" />
-  <div className="canvas-chat">
+  return <div className="canvas-chat">
     {expanded && <div className="chat-transcript" ref={transcript} role="log" aria-label="AI conversation">
       <div className="chat-transcript-heading"><span>DeepSeek Flash</span><button type="button" onClick={() => setExpanded(false)} aria-label="Close conversation">×</button></div>
       {!messages.length && <p className="chat-empty">Ask about this canvas or describe an edit.</p>}
@@ -202,7 +228,7 @@ export function CanvasChat({ doc, api, onSettings }) {
         {lastReply && !expanded && <span className="chat-reply-dot" />}
       </button>
       <input aria-label="Message DeepSeek" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={busy ? (previewing ? "Drawing on this canvas…" : "AI is working on this canvas…") : "Ask AI about this canvas…"} disabled={busy || !api} maxLength={16000} />
-      {busy ? <button type="button" onClick={cancel} aria-label="Cancel AI request">Stop</button> : <button type="submit" disabled={!api || !prompt.trim()} aria-label="Send message" title="Send message">
+      {busy ? <button type="button" onClick={() => cancel()} aria-label="Cancel AI request">Stop</button> : <button type="submit" disabled={!api || !prompt.trim()} aria-label="Send message" title="Send message">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" /><path d="m21.854 2.147-10.94 10.939" /></svg>
       </button>}
       </form>
@@ -211,5 +237,5 @@ export function CanvasChat({ doc, api, onSettings }) {
       </button>
     </div>
     <span className="sr-only" role="status">{busy ? "AI is working" : lastReply}</span>
-  </div></>;
+  </div>;
 }

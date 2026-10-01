@@ -80,7 +80,73 @@ func completeAIElements(arguments string) []map[string]any {
 	return nil
 }
 
-func decodeAIResponse(reader io.Reader, streaming bool, preview func([]map[string]any) error) (aiResponse, error) {
+// Read the host-only style flag even while the elements string is incomplete.
+func changeAIConnectorStyle(arguments string) bool {
+	var options struct {
+		Change bool `json:"changeConnectorStyle"`
+	}
+	if json.Unmarshal([]byte(arguments), &options) == nil {
+		return options.Change
+	}
+	d := json.NewDecoder(strings.NewReader(arguments))
+	if _, err := d.Token(); err != nil {
+		return false
+	}
+	for d.More() {
+		key, err := d.Token()
+		if err != nil {
+			return false
+		}
+		var value any
+		if d.Decode(&value) != nil {
+			return false
+		}
+		if key == "changeConnectorStyle" {
+			change, _ := value.(bool)
+			return change
+		}
+	}
+	return false
+}
+
+func aiConnectorStyle(elements []map[string]any) map[string]any {
+	counts := map[string]int{}
+	var best map[string]any
+	most := 0
+	// ponytail: inherit the dominant style; selection-scoped inheritance can handle mixed diagrams later.
+	for _, element := range elements {
+		if element["type"] != "arrow" && element["type"] != "line" {
+			continue
+		}
+		style := map[string]any{"startArrowhead": nil, "endArrowhead": nil}
+		for _, field := range []string{"strokeWidth", "strokeColor", "strokeStyle", "roughness", "startArrowhead", "endArrowhead"} {
+			if value, ok := element[field]; ok {
+				style[field] = value
+			}
+		}
+		encoded, _ := json.Marshal(style)
+		counts[string(encoded)]++
+		if counts[string(encoded)] > most {
+			most, best = counts[string(encoded)], style
+		}
+	}
+	return best
+}
+
+func inheritAIConnectorStyle(edits []map[string]any, style map[string]any, change bool) {
+	for _, edit := range edits {
+		if edit["type"] != "arrow" && edit["type"] != "line" {
+			continue
+		}
+		for field, value := range style {
+			if _, supplied := edit[field]; !supplied || !change {
+				edit[field] = value
+			}
+		}
+	}
+}
+
+func decodeAIResponse(reader io.Reader, streaming bool, preview func([]map[string]any, bool) error) (aiResponse, error) {
 	var response aiResponse
 	if !streaming {
 		err := json.NewDecoder(io.LimitReader(reader, 8<<20)).Decode(&response)
@@ -114,7 +180,7 @@ func decodeAIResponse(reader io.Reader, streaming bool, preview func([]map[strin
 			return nil
 		}
 		previewCount, lastPreview = len(elements), time.Now()
-		return preview(elements)
+		return preview(elements, changeAIConnectorStyle(fn["arguments"].(string)))
 	}
 	consume := func(data string) (bool, error) {
 		if data == "[DONE]" {

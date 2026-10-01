@@ -120,6 +120,9 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 			if body["stream"] != true {
 				t.Error("model output must stream")
 			}
+			if !strings.Contains(body["messages"].([]any)[0].(map[string]any)["content"].(string), `"strokeWidth":1`) {
+				t.Error("the model must receive existing connector styles")
+			}
 			if tools := body["tools"].([]any); len(tools) != 1 || tools[0].(map[string]any)["function"].(map[string]any)["name"] != "create_view" {
 				t.Error("model should not need a read_me round")
 			}
@@ -156,7 +159,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 			rounds++
 			if rounds == 1 {
 				w.Header().Set("Content-Type", "text/event-stream")
-				arguments, _ := json.Marshal(map[string]string{"elements": `[{"type":"rectangle","id":"new","x":10,"y":20}]`})
+				arguments, _ := json.Marshal(map[string]any{"changeConnectorStyle": false, "elements": `[{"type":"arrow","id":"new","x":10,"y":20,"endArrowhead":"arrow"}]`})
 				writeAIChunk(w, map[string]any{"reasoning_content": "tool-reasoning", "tool_calls": []any{map[string]any{"index": 0, "id": "call1", "function": map[string]string{"name": "create_view", "arguments": string(arguments[:len(arguments)-2])}}}}, "")
 				writeAIChunk(w, map[string]any{"tool_calls": []any{map[string]any{"index": 0, "function": map[string]string{"arguments": string(arguments[len(arguments)-2:])}}}}, "tool_calls")
 				io.WriteString(w, "data: [DONE]\n\n")
@@ -194,6 +197,12 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 				if synced && !strings.Contains(args["elements"].(string), `"restoreCheckpoint"`) {
 					t.Error("edits must restore current checkpoint")
 				}
+				if _, leaked := args["changeConnectorStyle"]; leaked {
+					t.Error("host-only option leaked to MCP")
+				}
+				if synced && (!strings.Contains(args["elements"].(string), `"strokeWidth":1`) || !strings.Contains(args["elements"].(string), `"endArrowhead":null`)) {
+					t.Error("the host must preserve thin connectors without arrowheads")
+				}
 				result = map[string]any{"content": []any{}, "structuredContent": map[string]string{"checkpointId": "checkpoint"}}
 			case "read_checkpoint":
 				result = map[string]any{"content": []any{map[string]string{"type": "text", "text": `{"elements":[{"id":"original","type":"rectangle","x":0,"y":0,"version":1},{"id":"new","type":"rectangle","x":10,"y":20}]}`}}}
@@ -215,7 +224,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 		t.Fatal(err)
 	}
 	history := []ChatMessage{{Role: "assistant", Content: "Previous reply", ReasoningContent: "previous-reasoning"}}
-	scene := `{"elements":[{"id":"original","type":"rectangle","x":0,"y":0,"version":1}]}`
+	scene := `{"elements":[{"id":"original","type":"arrow","x":0,"y":0,"version":1,"strokeWidth":1,"endArrowhead":null}]}`
 	result, err := app.AskAI(path, scene, "", "Add a box", "", history, sessionID, "request-1")
 	if err != nil {
 		t.Fatal(err)

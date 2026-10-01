@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseScene, sceneSignature, splitMCPElements } from "./scene.js";
+import { nextPreviewElements, rebasePreviewEdits, parseScene, sceneSignature, splitMCPElements } from "./scene.js";
+
+test("native previews add one node with its label, then connections; rollback keeps user edits", () => {
+  const original = [{ id: "old", version: 1 }, { id: "keep", version: 1 }];
+  const target = [original[1], { id: "node", type: "ellipse" }, { id: "label", containerId: "node" }, { id: "edge", type: "arrow" }];
+  const first = nextPreviewElements(original, target);
+  assert.deepEqual(first.map(e => e.id), ["keep", "node", "label"]);
+  const final = nextPreviewElements(first, target);
+  assert.deepEqual(final.map(e => e.id), ["keep", "node", "label", "edge"]);
+  assert.equal(nextPreviewElements(final.map(e => ({ ...e, versionNonce: 100, index: "auto" })), target), null);
+  const user = [{ ...final[0], version: 2, x: 100 }, ...final.slice(1), { id: "drawn", version: 1 }];
+  assert.deepEqual(rebasePreviewEdits(original, final, user).map(e => [e.id, e.version]), [["old", 1], ["keep", 2], ["drawn", 1]]);
+});
 
 test("accepts Excalidraw data and rejects unrelated JSON", () => {
   assert.deepEqual(parseScene('{"elements":[],"appState":{},"files":{}}').elements, []);
