@@ -16,46 +16,54 @@ export function SettingsIcon() {
 
 export function SettingsModal({ onClose }) {
   const dialog = useRef();
-  const [page, setPage] = useState("home");
   const [key, setKey] = useState("");
   const [configured, setConfigured] = useState(false);
+  const [reasoning, setReasoning] = useState("high");
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const savedKey = "••••••••••••••••";
 
   useEffect(() => {
     dialog.current.showModal();
-    LoadAISettings().then((settings) => setConfigured(settings.hasAPIKey)).catch((error) => setError(String(error)));
+    LoadAISettings().then((settings) => {
+      setConfigured(settings.hasAPIKey);
+      setReasoning(settings.reasoningEffort || "high");
+      if (settings.hasAPIKey) setKey(savedKey);
+    }).catch((error) => setError(String(error)));
   }, []);
 
   async function submit(event) {
     event.preventDefault();
     setSaving(true); setError("");
-    try { await SaveAISettings(key); setKey(""); onClose(); }
+    try { await SaveAISettings(key === savedKey ? "" : key, reasoning); onClose(); }
     catch (error) { setError(String(error)); }
     finally { setSaving(false); }
   }
 
   return <dialog ref={dialog} className="settings-modal" onCancel={onClose} onClick={(event) => { if (event.target === dialog.current) onClose(); }} aria-labelledby="settings-title">
     <header className="settings-heading">
-      {page !== "home" && <button type="button" className="settings-back" onClick={() => { setPage("home"); setKey(""); }} aria-label="Back to settings">←</button>}
-      <h2 id="settings-title">{page === "home" ? "Settings" : "Model Provider"}</h2>
+      <h2 id="settings-title">Settings</h2>
       <button type="button" className="settings-close" onClick={onClose} aria-label="Close settings">×</button>
     </header>
-    {page === "home" ? <div className="settings-body">
-      <small className="settings-section-label">AI</small>
-      <button type="button" className="settings-entry" onClick={() => setPage("provider")}><span>Model Provider</span><span aria-hidden="true">›</span></button>
-      {error && <p role="alert" className="error">{error}</p>}
-    </div> : <form className="settings-body" onSubmit={submit}>
-      <label htmlFor="deepseek-key">DeepSeek API Key</label>
-      <div className="api-key-field">
-        <input id="deepseek-key" autoFocus type={showKey ? "text" : "password"} value={key} onChange={(event) => setKey(event.target.value)} placeholder={configured ? "Configured · enter a new key to replace" : "Enter your DeepSeek API key"} autoComplete="off" spellCheck={false} required={!configured} disabled={saving} aria-describedby="provider-note" />
-        <button type="button" onClick={() => setShowKey(!showKey)} aria-label={showKey ? "Hide API key" : "Show API key"}>{showKey ? "Hide" : "Show"}</button>
-      </div>
-      <p id="provider-note" className="settings-note">Uses DeepSeek Flash through the official DeepSeek API. Your key is saved locally in ~/.exbase/auth.json.</p>
-      {error && <p role="alert" className="error">{error}</p>}
-      <footer className="settings-actions"><button type="button" onClick={onClose}>Cancel</button><button type="submit" disabled={saving}>{saving ? "Saving…" : "Save"}</button></footer>
-    </form>}
+    <div className="settings-content">
+      <nav className="settings-nav" aria-label="Settings sections"><button type="button" className="active" aria-current="page">AI</button></nav>
+      <form className="settings-panel" onSubmit={submit}>
+        <h3>Model Provider</h3>
+        <label htmlFor="deepseek-key">DeepSeek API Key</label>
+        <div className="api-key-field">
+          <input id="deepseek-key" type={showKey ? "text" : "password"} value={key} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setKey(event.target.value)} placeholder="Enter your DeepSeek API key" autoComplete="off" spellCheck={false} required={!configured} disabled={saving} aria-describedby="provider-note" />
+          <button type="button" onClick={() => setShowKey(!showKey)} aria-label={showKey ? "Hide API key" : "Show API key"}>{showKey ? "Hide" : "Show"}</button>
+        </div>
+        <label htmlFor="reasoning-effort">Reasoning</label>
+        <select id="reasoning-effort" value={reasoning} onChange={(event) => setReasoning(event.target.value)} disabled={saving}>
+          <option value="none">None</option><option value="low">Low</option><option value="high">High</option><option value="max">Max</option>
+        </select>
+        <p id="provider-note" className="settings-note">Uses DeepSeek Flash through the official DeepSeek API. Your key is saved locally in ~/.exbase/auth.json.</p>
+        {error && <p role="alert" className="error">{error}</p>}
+        <footer className="settings-actions"><button type="button" onClick={onClose}>Cancel</button><button type="submit" disabled={saving}>{saving ? "Saving…" : "Save"}</button></footer>
+      </form>
+    </div>
   </dialog>;
 }
 

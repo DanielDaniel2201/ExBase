@@ -70,11 +70,15 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 .settings-close { margin-left: auto; }
 .settings-heading button, .chat-transcript-heading button, .chat-error button { border: 0; border-radius: 4px; background: transparent; color: #555; cursor: pointer; font-size: 18px; }
 .settings-heading button:hover { background: #e8e8ea; }
-.settings-body { padding: 16px; }
-.settings-section-label { display: block; margin-bottom: 8px; color: #777; }
-.settings-entry { width: 100%; display: flex; justify-content: space-between; padding: 9px 10px; border: 0; border-radius: 5px; background: #ececee; text-align: left; cursor: pointer; }
-.settings-entry:hover { background: #e5e5e7; }
-.settings-body label { display: block; margin-bottom: 8px; }
+.settings-content { min-height: 260px; display: grid; grid-template-columns: 112px minmax(0, 1fr); }
+.settings-nav { padding: 10px 8px; border-right: 1px solid #ddd; }
+.settings-nav button { width: 100%; padding: 7px 9px; border: 0; border-radius: 5px; background: transparent; color: inherit; text-align: left; cursor: default; }
+.settings-nav button.active { background: #e5e5e7; font-weight: 600; }
+.settings-panel { min-width: 0; padding: 16px; }
+.settings-panel h3 { margin: 0 0 18px; font-size: 14px; }
+.settings-panel label { display: block; margin: 14px 0 8px; }
+.settings-panel select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 5px; color: inherit; background: #fff; font: inherit; }
+.settings-panel select:focus { outline: 2px solid #6965db; outline-offset: 1px; }
 .api-key-field { display: flex; border: 1px solid #ccc; border-radius: 5px; background: #fff; }
 .api-key-field:focus-within { outline: 2px solid #6965db; outline-offset: 1px; }
 .api-key-field input { width: 100%; min-width: 0; padding: 9px; border: 0; outline: none; border-radius: inherit; font: inherit; background: transparent; }

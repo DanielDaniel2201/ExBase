@@ -66,7 +66,7 @@ func TestCanvasInspectionPages(t *testing.T) {
 func TestAgentMixesManagedAndNativeTools(t *testing.T) {
 	t.Setenv("USERPROFILE", t.TempDir())
 	app := &App{root: t.TempDir()}
-	if _, err := app.SaveAISettings("test-key"); err != nil {
+	if _, err := app.SaveAISettings("test-key", "high"); err != nil {
 		t.Fatal(err)
 	}
 	compiled := []map[string]any{{"id": "flow-A", "type": "rectangle", "x": float64(0), "y": float64(0), "version": float64(1), "customData": map[string]any{"exbaseMermaid": map[string]any{"id": "flow", "active": true, "source": "flowchart LR\nA-->B", "members": []any{"flow-A"}}}}}

@@ -20,28 +20,31 @@ func TestAISettings(t *testing.T) {
 	t.Setenv("HOME", home)
 	app := NewApp()
 	settings, err := app.LoadAISettings()
-	if err != nil || settings.HasAPIKey {
+	if err != nil || settings.HasAPIKey || settings.ReasoningEffort != "high" {
 		t.Fatal(settings, err)
 	}
-	if _, err := app.SaveAISettings("test-key"); err != nil {
+	if _, err := app.SaveAISettings("test-key", "low"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := app.SaveAISettings(""); err != nil {
+	if settings, err = app.SaveAISettings("", "none"); err != nil || settings.ReasoningEffort != "none" {
 		t.Fatal(err)
 	}
 	key, err := loadAPIKey()
 	if err != nil || key != "test-key" {
 		t.Fatal("blank save must retain key", err)
 	}
-	if _, err := app.SaveAISettings("replacement"); err != nil {
+	if _, err := app.SaveAISettings("replacement", "max"); err != nil {
 		t.Fatal(err)
 	}
 	key, _ = loadAPIKey()
 	if key != "replacement" {
 		t.Fatal("replacement key was not saved")
 	}
-	if _, err := app.SaveAISettings("bad\nkey"); err == nil {
+	if _, err := app.SaveAISettings("bad\nkey", "high"); err == nil {
 		t.Fatal("header injection must be rejected")
+	}
+	if _, err := app.SaveAISettings("", "medium"); err == nil {
+		t.Fatal("unsupported reasoning effort must be rejected")
 	}
 	path, _ := authFile()
 	if path != filepath.Join(home, ".exbase", "auth.json") {
@@ -50,6 +53,21 @@ func TestAISettings(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	if !json.Valid(data) {
 		t.Fatal("invalid settings JSON")
+	}
+}
+
+func TestReasoningRequest(t *testing.T) {
+	for _, effort := range []string{"none", "low", "high", "max"} {
+		body := map[string]any{}
+		applyReasoning(body, effort)
+		thinking := body["thinking"].(map[string]string)["type"]
+		if effort == "none" {
+			if thinking != "disabled" || body["reasoning_effort"] != nil {
+				t.Fatal("none must disable thinking", body)
+			}
+		} else if thinking != "enabled" || body["reasoning_effort"] != effort {
+			t.Fatal("reasoning effort was not applied", body)
+		}
 	}
 }
 
@@ -92,7 +110,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("HOME", home)
 	app := &App{root: t.TempDir()}
-	if _, err := app.SaveAISettings("test-key"); err != nil {
+	if _, err := app.SaveAISettings("test-key", "high"); err != nil {
 		t.Fatal(err)
 	}
 	var synced bool

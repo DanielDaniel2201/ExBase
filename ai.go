@@ -21,7 +21,12 @@ const deepSeekURL = "https://api.deepseek.com/chat/completions"
 const excalidrawMCPURL = "https://mcp.excalidraw.com/mcp"
 
 type AISettings struct {
-	HasAPIKey bool `json:"hasAPIKey"`
+	HasAPIKey       bool   `json:"hasAPIKey"`
+	ReasoningEffort string `json:"reasoningEffort"`
+}
+type aiConfig struct {
+	APIKey          string
+	ReasoningEffort string
 }
 type ChatMessage struct {
 	Role             string `json:"role"`
@@ -40,43 +45,72 @@ func authFile() (string, error) {
 	return filepath.Join(home, ".exbase", "auth.json"), err
 }
 
-func loadAPIKey() (string, error) {
+func validReasoningEffort(effort string) bool {
+	return effort == "none" || effort == "low" || effort == "high" || effort == "max"
+}
+
+func applyReasoning(body map[string]any, effort string) {
+	body["thinking"] = map[string]string{"type": "enabled"}
+	if effort == "none" {
+		body["thinking"] = map[string]string{"type": "disabled"}
+		return
+	}
+	body["reasoning_effort"] = effort
+}
+
+func loadAIConfig() (aiConfig, error) {
 	path, err := authFile()
 	if err != nil {
-		return "", err
+		return aiConfig{}, err
 	}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return "", nil
+		return aiConfig{ReasoningEffort: "high"}, nil
 	}
 	if err != nil {
-		return "", err
+		return aiConfig{}, err
 	}
 	var auth struct {
 		DeepSeek struct {
-			APIKey string `json:"apiKey"`
+			APIKey          string `json:"apiKey"`
+			ReasoningEffort string `json:"reasoningEffort"`
 		} `json:"deepseek"`
 	}
 	if err := json.Unmarshal(data, &auth); err != nil {
-		return "", errors.New("cannot read AI settings")
+		return aiConfig{}, errors.New("cannot read AI settings")
 	}
-	return auth.DeepSeek.APIKey, nil
+	if !validReasoningEffort(auth.DeepSeek.ReasoningEffort) {
+		auth.DeepSeek.ReasoningEffort = "high"
+	}
+	return aiConfig{APIKey: auth.DeepSeek.APIKey, ReasoningEffort: auth.DeepSeek.ReasoningEffort}, nil
+}
+
+func loadAPIKey() (string, error) {
+	config, err := loadAIConfig()
+	return config.APIKey, err
 }
 
 func (a *App) LoadAISettings() (AISettings, error) {
 	a.aiMu.Lock()
 	defer a.aiMu.Unlock()
-	key, err := loadAPIKey()
-	return AISettings{HasAPIKey: key != ""}, err
+	config, err := loadAIConfig()
+	return AISettings{HasAPIKey: config.APIKey != "", ReasoningEffort: config.ReasoningEffort}, err
 }
 
-func (a *App) SaveAISettings(key string) (AISettings, error) {
+func (a *App) SaveAISettings(key, reasoningEffort string) (AISettings, error) {
 	a.aiMu.Lock()
 	defer a.aiMu.Unlock()
 	key = strings.TrimSpace(key)
+	reasoningEffort = strings.ToLower(strings.TrimSpace(reasoningEffort))
+	if !validReasoningEffort(reasoningEffort) {
+		return AISettings{}, errors.New("choose a valid reasoning effort")
+	}
+	old, err := loadAIConfig()
+	if err != nil {
+		return AISettings{}, err
+	}
 	if key == "" {
-		old, err := loadAPIKey()
-		return AISettings{HasAPIKey: old != ""}, err
+		key = old.APIKey
 	}
 	if len(key) > 1024 || strings.ContainsAny(key, "\r\n\t ") {
 		return AISettings{}, errors.New("enter a valid API key")
@@ -88,7 +122,7 @@ func (a *App) SaveAISettings(key string) (AISettings, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return AISettings{}, err
 	}
-	data, _ := json.Marshal(map[string]any{"deepseek": map[string]string{"type": "api_key", "apiKey": key}})
+	data, _ := json.Marshal(map[string]any{"deepseek": map[string]string{"type": "api_key", "apiKey": key, "reasoningEffort": reasoningEffort}})
 	// Replace only after a complete write, so an interrupted save keeps the old key.
 	file, err := os.CreateTemp(filepath.Dir(path), "auth-*.tmp")
 	if err != nil {
@@ -109,7 +143,7 @@ func (a *App) SaveAISettings(key string) (AISettings, error) {
 	if err := os.Rename(file.Name(), path); err != nil {
 		return AISettings{}, err
 	}
-	return AISettings{HasAPIKey: true}, nil
+	return AISettings{HasAPIKey: key != "", ReasoningEffort: reasoningEffort}, nil
 }
 
 func (a *App) CancelAI() {
@@ -296,11 +330,12 @@ func (a *App) AskAI(path, scene, checkpoint, prompt, screenshot string, history 
 		a.aiMu.Unlock()
 		return AIResult{}, errors.New("an AI request is already running")
 	}
-	key, err := loadAPIKey()
-	if err != nil || key == "" {
+	config, err := loadAIConfig()
+	if err != nil || config.APIKey == "" {
 		a.aiMu.Unlock()
 		return AIResult{}, errors.New("configure your DeepSeek API key in Settings first")
 	}
+	key := config.APIKey
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	a.aiCancel = cancel
 	a.aiMu.Unlock()
@@ -436,7 +471,9 @@ func (a *App) AskAI(path, scene, checkpoint, prompt, screenshot string, history 
 		return nil
 	}
 	for round := 0; round < 10; round++ {
-		body, _ := json.Marshal(map[string]any{"model": "deepseek-flash", "thinking": map[string]string{"type": "enabled"}, "reasoning_effort": "high", "messages": messages, "tools": tools, "stream": true, "stream_options": map[string]bool{"include_usage": true}})
+		requestBody := map[string]any{"model": "deepseek-flash", "messages": messages, "tools": tools, "stream": true, "stream_options": map[string]bool{"include_usage": true}}
+		applyReasoning(requestBody, config.ReasoningEffort)
+		body, _ := json.Marshal(requestBody)
 		if err := trace.write("llm_request", map[string]any{"round": round + 1, "request": json.RawMessage(body)}); err != nil {
 			return AIResult{}, err
 		}
