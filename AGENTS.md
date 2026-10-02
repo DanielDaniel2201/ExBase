@@ -24,3 +24,12 @@ The API key is stored locally in `~/.exbase/auth.json`; AI trajectory logs are s
 ## UI conventions
 
 Extend the existing neutral gray palette, compact layout, and Lucide icon style. The chat entry appears only inside an open Excalidraw canvas. Avoid introducing extra toolbars or a new theme.
+
+## Code layout
+
+- `main.go` starts Wails; root `app.go` preserves the `main.App` binding.
+- `internal/app` coordinates AI, canvas callbacks, session logs, and slide export.
+- `internal/workspace` owns folder history and document operations.
+- `internal/settings` owns general settings and prompt templates.
+- `internal/fileio` provides safe file replacement shared by settings and export.
+- Tests live alongside the implementation; `go test ./...` runs all backend tests.

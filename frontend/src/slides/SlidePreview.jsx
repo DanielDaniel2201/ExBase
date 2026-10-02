@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { CaptureUpdateAction, exportToBlob } from "@excalidraw/excalidraw";
-import { ExportSlides } from "../wailsjs/go/main/App";
+import { ExportSlides } from "../../wailsjs/go/main/App";
 import { frameElements, orderedFrameElements, slideFrames } from "./slides";
 import { blobBase64, slidesPPT, slidesHTMLBase64 } from "./slide-export";
 

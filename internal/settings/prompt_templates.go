@@ -1,4 +1,4 @@
-package main
+package settings
 
 import (
 	"encoding/json"
@@ -19,9 +19,9 @@ func promptTemplatesFile() (string, error) {
 	return filepath.Join(home, ".exbase", "prompt-templates.json"), err
 }
 
-func (a *App) LoadPromptTemplates() ([]PromptTemplate, error) {
-	a.aiMu.Lock()
-	defer a.aiMu.Unlock()
+func (a *Store) LoadPromptTemplates() ([]PromptTemplate, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	path, err := promptTemplatesFile()
 	if err != nil {
 		return nil, err
@@ -53,9 +53,9 @@ func (a *App) LoadPromptTemplates() ([]PromptTemplate, error) {
 	return templates, nil
 }
 
-func (a *App) SavePromptTemplates(templates []PromptTemplate) error {
-	a.aiMu.Lock()
-	defer a.aiMu.Unlock()
+func (a *Store) SavePromptTemplates(templates []PromptTemplate) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	names := map[string]bool{}
 	for i := range templates {
 		t := &templates[i]

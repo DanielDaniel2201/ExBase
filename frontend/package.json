@@ -7,7 +7,7 @@
     "dev": "vite",
     "prebuild": "node -e \"require('fs').cpSync('node_modules/@excalidraw/excalidraw/dist/prod/fonts','public/fonts',{recursive:true})\"",
     "build": "vite build",
-    "test": "node --test src/*.test.js"
+    "test": "node --test src/*/*.test.js"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "0.18.1",

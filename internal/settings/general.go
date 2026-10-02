@@ -1,8 +1,9 @@
-package main
+package settings
 
 import (
 	"encoding/json"
 	"errors"
+	"exbase/internal/fileio"
 	"os"
 	"path/filepath"
 )
@@ -16,9 +17,9 @@ func generalSettingsFile() (string, error) {
 	return filepath.Join(home, ".exbase", "general.json"), err
 }
 
-func (a *App) LoadGeneralSettings() (GeneralSettings, error) {
-	a.aiMu.Lock()
-	defer a.aiMu.Unlock()
+func (a *Store) LoadGeneralSettings() (GeneralSettings, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	settings := GeneralSettings{SlidesEnabled: true}
 	path, err := generalSettingsFile()
 	if err != nil {
@@ -35,9 +36,9 @@ func (a *App) LoadGeneralSettings() (GeneralSettings, error) {
 	return settings, err
 }
 
-func (a *App) SaveGeneralSettings(settings GeneralSettings) error {
-	a.aiMu.Lock()
-	defer a.aiMu.Unlock()
+func (a *Store) SaveGeneralSettings(settings GeneralSettings) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	path, err := generalSettingsFile()
 	if err != nil {
 		return err
@@ -49,22 +50,5 @@ func (a *App) SaveGeneralSettings(settings GeneralSettings) error {
 	if err != nil {
 		return err
 	}
-	return replaceFile(path, data)
-}
-
-// Keep the previous file intact until the complete replacement is ready.
-func replaceFile(path string, data []byte) error {
-	file, err := os.CreateTemp(filepath.Dir(path), ".exbase-*.tmp")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(file.Name())
-	if _, err := file.Write(data); err != nil {
-		file.Close()
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	return os.Rename(file.Name(), path)
+	return fileio.Replace(path, data)
 }

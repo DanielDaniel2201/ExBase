@@ -1,9 +1,10 @@
-package main
+package app
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"exbase/internal/workspace"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -65,7 +66,7 @@ func TestCanvasInspectionPages(t *testing.T) {
 
 func TestAgentMixesManagedAndNativeTools(t *testing.T) {
 	t.Setenv("USERPROFILE", t.TempDir())
-	app := &App{root: t.TempDir()}
+	app := &App{Workspace: workspace.New(t.TempDir())}
 	if _, err := app.SaveAISettings("test-key", "high"); err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +170,7 @@ func TestAgentMixesManagedAndNativeTools(t *testing.T) {
 	previous := http.DefaultTransport
 	http.DefaultTransport = routedTransport{previous, server.URL}
 	defer func() { http.DefaultTransport = previous }()
-	path := filepath.Join(app.root, "mixed.excalidraw")
+	path := filepath.Join(app.Workspaces().Current, "mixed.excalidraw")
 	session, err := app.CreateAISession(path)
 	if err != nil {
 		t.Fatal(err)

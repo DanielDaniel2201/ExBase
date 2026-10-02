@@ -1,4 +1,4 @@
-package main
+package settings
 
 import (
 	"os"
@@ -10,7 +10,7 @@ func TestPromptTemplates(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("HOME", home)
-	app := NewApp()
+	app := (&Store{})
 	defaults, err := app.LoadPromptTemplates()
 	if err != nil || len(defaults) != 1 {
 		t.Fatal(defaults, err)
@@ -19,7 +19,7 @@ func TestPromptTemplates(t *testing.T) {
 	if err := app.SavePromptTemplates(templates); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := NewApp().LoadPromptTemplates()
+	loaded, err := (&Store{}).LoadPromptTemplates()
 	if err != nil || !reflect.DeepEqual(loaded, templates) {
 		t.Fatal(loaded, err)
 	}

@@ -1,9 +1,10 @@
-package main
+package app
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"exbase/internal/workspace"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -112,7 +113,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("HOME", home)
-	app := &App{root: t.TempDir()}
+	app := &App{Workspace: workspace.New(t.TempDir())}
 	if _, err := app.SaveAISettings("test-key", "none"); err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +240,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	previous := http.DefaultTransport
 	http.DefaultTransport = routedTransport{previous, server.URL}
 	defer func() { http.DefaultTransport = previous }()
-	path := filepath.Join(app.root, "diagram.excalidraw")
+	path := filepath.Join(app.Workspaces().Current, "diagram.excalidraw")
 	sessionID, err := app.CreateAISession(path)
 	if err != nil {
 		t.Fatal(err)
@@ -296,7 +297,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	if strings.Contains(string(data), "test-key") {
 		t.Fatal("trace leaked API key")
 	}
-	if _, err := app.AskAI(filepath.Join(app.root, "..", "outside.excalidraw"), `{"elements":[]}`, "", "edit", "", nil, sessionID, "request-5", "high"); err == nil {
+	if _, err := app.AskAI(filepath.Join(app.Workspaces().Current, "..", "outside.excalidraw"), `{"elements":[]}`, "", "edit", "", nil, sessionID, "request-5", "high"); err == nil {
 		t.Fatal("outside workspace request accepted")
 	}
 }

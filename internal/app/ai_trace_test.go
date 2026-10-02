@@ -1,7 +1,8 @@
-package main
+package app
 
 import (
 	"encoding/json"
+	"exbase/internal/workspace"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,8 +13,8 @@ func TestTraceAppendAndRedaction(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("HOME", home)
-	app := &App{root: t.TempDir()}
-	path := filepath.Join(app.root, "diagram.excalidraw")
+	app := &App{Workspace: workspace.New(t.TempDir())}
+	path := filepath.Join(app.Workspaces().Current, "diagram.excalidraw")
 	id, err := app.CreateAISession(path)
 	if err != nil {
 		t.Fatal(err)

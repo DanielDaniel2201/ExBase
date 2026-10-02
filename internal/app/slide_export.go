@@ -1,8 +1,9 @@
-package main
+package app
 
 import (
 	"encoding/base64"
 	"errors"
+	"exbase/internal/fileio"
 	"path/filepath"
 	"strings"
 
@@ -40,7 +41,7 @@ func (a *App) ExportSlides(name, format, encoded string) (string, error) {
 	if !strings.EqualFold(filepath.Ext(path), "."+format) {
 		path += "." + format
 	}
-	if err := replaceFile(path, data); err != nil {
+	if err := fileio.Replace(path, data); err != nil {
 		return "", err
 	}
 	return path, nil
