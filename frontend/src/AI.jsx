@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { CaptureUpdateAction, convertToExcalidrawElements, exportToBlob, hashString, restore, serializeAsJSON } from "@excalidraw/excalidraw";
-import { AskAI, CancelAI, CreateAISession, LoadAISettings, SaveAISettings, ResolveAICanvas } from "../wailsjs/go/main/App";
+import { AskAI, CancelAI, CreateAISession, LoadAISettings, SaveAISettings, ResolveAICanvas, LoadPromptTemplates, SavePromptTemplates } from "../wailsjs/go/main/App";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import { materializeCanvas, reconcileMermaid, renderMermaid } from "./mermaid";
 import { nextPreviewElements, rebasePreviewEdits, sceneSignature, splitMCPElements } from "./scene";
+import { matchingTemplates, firstBlank } from "./templates";
 
 // Lucide Settings (ISC), kept inline like the existing sidebar icons.
 export function SettingsIcon() {
@@ -12,6 +13,25 @@ export function SettingsIcon() {
     <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831 2.34 2.34 0 0 1 2.33-4.033 2.34 2.34 0 0 0 3.32-1.915" />
     <circle cx="12" cy="12" r="3" />
   </svg>;
+}
+
+function TemplateEditor({ template, isNew, saving, error, onSave, onDelete, onClose }) {
+  const dialog = useRef();
+  const [draft, setDraft] = useState(template);
+  useEffect(() => { dialog.current.showModal(); }, []);
+  const save = () => onSave({ ...draft, name: draft.name.trim() });
+  return <dialog ref={dialog} className="settings-modal template-edit-modal" aria-labelledby="template-edit-title" onCancel={(event) => { event.preventDefault(); event.stopPropagation(); if (!saving) save(); }} onClick={(event) => { if (event.target === dialog.current && !saving) save(); }}>
+    <header className="settings-heading"><h2 id="template-edit-title">{isNew ? "New Template" : "Edit Template"}</h2><button type="button" className="settings-close" disabled={saving} onClick={save} aria-label="Close template editor">×</button></header>
+    <fieldset disabled={saving} className="template-editor">
+      <label htmlFor="prompt-template-name">Name</label>
+      <input id="prompt-template-name" value={draft.name} maxLength={80} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+      <label htmlFor="prompt-template-body">Content</label>
+      <textarea id="prompt-template-body" value={draft.body} maxLength={16000} onChange={(event) => setDraft({ ...draft, body: event.target.value })} />
+      <p className="template-help">Use {"{{topic}}"} for blanks, then edit the inserted text in chat.</p>
+      {error && <p role="alert" className="error">{error}</p>}
+      <div className="template-actions"><button type="button" onClick={isNew ? onClose : onDelete}>{isNew ? "Cancel" : "Delete"}</button><button type="button" onClick={save}>Save</button></div>
+    </fieldset>
+  </dialog>;
 }
 
 export function SettingsModal({ onClose }) {
@@ -22,29 +42,50 @@ export function SettingsModal({ onClose }) {
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [templates, setTemplates] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const savedTemplates = useRef("");
 
   useEffect(() => {
     dialog.current.showModal();
-    LoadAISettings().then((settings) => {
+    Promise.all([LoadAISettings(), LoadPromptTemplates()]).then(([settings, templates]) => {
       savedKey.current = settings.apiKey || "";
       setKey(savedKey.current);
+      setTemplates(templates);
+      savedTemplates.current = JSON.stringify(templates);
+      setLoaded(true);
     }).catch((error) => setError(String(error)));
   }, []);
 
-  async function save() {
+  async function save(nextTemplates = templates) {
+    if (!loaded) return false;
     const value = key.trim();
-    if (value === savedKey.current) return true;
-    if (!value) { setError("Enter your DeepSeek API key"); return false; }
+    const templatesJSON = JSON.stringify(nextTemplates);
+    if (value === savedKey.current && templatesJSON === savedTemplates.current) return true;
+    if (!value && savedKey.current) { setError("Enter your DeepSeek API key"); return false; }
     if (savePromise.current) return savePromise.current;
     setSaving(true); setError("");
-    savePromise.current = SaveAISettings(value, "high")
-      .then(() => { savedKey.current = value; setKey(value); return true; })
+    savePromise.current = (async () => {
+      if (templatesJSON !== savedTemplates.current) {
+        await SavePromptTemplates(nextTemplates);
+        setTemplates(nextTemplates);
+        savedTemplates.current = templatesJSON;
+        window.dispatchEvent(new Event("prompt-templates-changed"));
+      }
+      if (value !== savedKey.current) {
+        await SaveAISettings(value, "high");
+        savedKey.current = value; setKey(value);
+      }
+      return true;
+    })()
       .catch((error) => { setError(String(error)); return false; })
       .finally(() => { setSaving(false); savePromise.current = null; });
     return savePromise.current;
   }
 
   async function close() {
+    if (!loaded) { onClose(); return; }
     if (await save()) onClose();
   }
 
@@ -59,16 +100,32 @@ export function SettingsModal({ onClose }) {
         <h3>Model Provider</h3>
         <label htmlFor="deepseek-key">DeepSeek API Key</label>
         <div className="api-key-field">
-          <input id="deepseek-key" type={showKey ? "text" : "password"} value={key} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setKey(event.target.value)} onBlur={save} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} placeholder="Enter your DeepSeek API key" autoComplete="off" spellCheck={false} disabled={saving} />
+          <input id="deepseek-key" type={showKey ? "text" : "password"} value={key} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setKey(event.target.value)} onBlur={() => save()} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} placeholder="Enter your DeepSeek API key" autoComplete="off" spellCheck={false} disabled={!loaded || saving} />
           <button type="button" onClick={() => setShowKey(!showKey)} aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}>
             {showKey
               ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m2 2 20 20" /><path d="M6.71 6.71C4.7 8.1 3.17 9.94 2.06 11.65a1 1 0 0 0 0 .7C4.01 15.36 7.57 19 12 19c1.44 0 2.77-.38 3.96-.99" /><path d="M10.73 5.08A7 7 0 0 1 12 5c4.43 0 7.99 3.64 9.94 6.65a1 1 0 0 1 0 .7 11.8 11.8 0 0 1-1.32 1.74" /><path d="M14.12 14.12A3 3 0 0 1 9.88 9.88" /></svg>
               : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.06 12.35a1 1 0 0 1 0-.7C4.01 8.64 7.57 5 12 5s7.99 3.64 9.94 6.65a1 1 0 0 1 0 .7C19.99 15.36 16.43 19 12 19S4.01 15.36 2.06 12.35" /><circle cx="12" cy="12" r="3" /></svg>}
           </button>
         </div>
+        <section className="prompt-template-settings" aria-labelledby="prompt-template-title">
+          <div className="template-heading"><h3 id="prompt-template-title">Prompt Templates</h3><button type="button" disabled={!loaded || saving} onClick={() => {
+            let name = "New template", number = 2;
+            while (templates.some((template) => template.name.toLowerCase() === name.toLowerCase())) name = `New template ${number++}`;
+            setError(""); setSelected({ index: templates.length, template: { name, body: "Describe {{topic}}" } });
+          }}>+ Add</button></div>
+          <p className="template-help">Type / in chat to insert a template. Click a template to edit.</p>
+          <div className="template-list" aria-label="Prompt templates">
+            {!templates.length && <p className="template-help">{loaded ? "No templates yet." : "Loading…"}</p>}
+            {templates.map((template, index) => <button type="button" className="template-row" key={index} disabled={saving} onClick={() => { setError(""); setSelected({ index, template }); }}><span>{template.name}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>)}
+          </div>
+        </section>
         {error && <p role="alert" className="error">{error}</p>}
       </div>
     </div>
+    {selected && <TemplateEditor key={selected.index} template={selected.template} isNew={selected.index === templates.length} saving={saving} error={error} onClose={() => setSelected(null)} onSave={async (template) => {
+      const next = [...templates]; next[selected.index] = template;
+      if (await save(next)) setSelected(null);
+    }} onDelete={async () => { if (await save(templates.filter((_, index) => index !== selected.index))) setSelected(null); }} />}
   </dialog>;
 }
 
@@ -89,6 +146,10 @@ function restoreMCPElements(elements) {
 
 export function CanvasChat({ doc, api, aiPreview, onSettings }) {
   const [prompt, setPrompt] = useState("");
+  const [templates, setTemplates] = useState([]);
+  const [templateIndex, setTemplateIndex] = useState(0);
+  const [templateMenu, setTemplateMenu] = useState(false);
+  const composerInput = useRef();
   const [messages, setMessages] = useState([]);
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState("fast");
@@ -105,6 +166,47 @@ export function CanvasChat({ doc, api, aiPreview, onSettings }) {
   const currentAPI = useRef(api);
   const canvasJob = useRef(null);
   currentAPI.current = api;
+
+  useEffect(() => {
+    let active = true;
+    const load = () => LoadPromptTemplates().then((value) => { if (active) setTemplates(value); }).catch((error) => { if (active) setError(String(error)); });
+    load();
+    window.addEventListener("prompt-templates-changed", load);
+    return () => { active = false; window.removeEventListener("prompt-templates-changed", load); };
+  }, []);
+
+  useEffect(() => {
+    const input = composerInput.current;
+    input.style.height = "auto";
+    input.style.height = `${Math.min(input.scrollHeight, 240)}px`;
+  }, [prompt]);
+
+  const suggestions = matchingTemplates(templates, prompt);
+  const showTemplates = templateMenu && prompt.startsWith("/") && !prompt.includes("\n") && !busy;
+  const activeTemplate = Math.min(templateIndex, Math.max(0, suggestions.length - 1));
+
+  function insertTemplate(template) {
+    setPrompt(template.body); setTemplateMenu(false);
+    requestAnimationFrame(() => {
+      composerInput.current.focus();
+      composerInput.current.setSelectionRange(...firstBlank(template.body));
+    });
+  }
+
+  function composerKeyDown(event) {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    if (showTemplates && ["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(event.key)) {
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setTemplateMenu(false); return; }
+      if (suggestions.length) {
+        event.preventDefault();
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") setTemplateIndex((activeTemplate + (event.key === "ArrowDown" ? 1 : -1) + suggestions.length) % suggestions.length);
+        else insertTemplate(suggestions[activeTemplate]);
+        return;
+      }
+      if (event.key === "Enter") { event.preventDefault(); return; }
+    }
+    if (event.key === "Enter" && !event.shiftKey) send(event);
+  }
 
   useEffect(() => () => { request.current++; if (running.current) CancelAI(); clearPreview(false); }, []);
   useEffect(() => EventsOn("ai:canvas", async (job) => {
@@ -270,7 +372,10 @@ export function CanvasChat({ doc, api, aiPreview, onSettings }) {
         {lastReply && !expanded && <span className="chat-reply-dot" />}
       </button>
       <form className="chat-input-bar" onSubmit={send}>
-      <input aria-label="Message DeepSeek" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={busy ? (previewing ? "Drawing on this canvas…" : "AI is working on this canvas…") : "Ask AI about this canvas…"} disabled={busy || !api} maxLength={16000} />
+      {showTemplates && <div id="prompt-template-suggestions" className="template-suggestions" role="listbox" aria-label="Prompt templates">
+        {suggestions.length ? suggestions.map((template, index) => <button id={`prompt-template-option-${index}`} key={template.name} type="button" role="option" aria-selected={index === activeTemplate} className={index === activeTemplate ? "active" : ""} onMouseDown={(event) => event.preventDefault()} onClick={() => insertTemplate(template)}>{template.name}</button>) : <p>No matching templates. Manage them in Settings → AI.</p>}
+      </div>}
+      <textarea ref={composerInput} rows={1} aria-label="Message DeepSeek" aria-controls={showTemplates ? "prompt-template-suggestions" : undefined} aria-expanded={showTemplates} aria-activedescendant={showTemplates && suggestions.length ? `prompt-template-option-${activeTemplate}` : undefined} value={prompt} onChange={(event) => { setPrompt(event.target.value); setTemplateIndex(0); setTemplateMenu(true); }} onFocus={() => setTemplateMenu(true)} onBlur={() => setTemplateMenu(false)} onKeyDown={composerKeyDown} placeholder={busy ? (previewing ? "Drawing on this canvas…" : "AI is working on this canvas…") : "Ask AI, or / for templates…"} disabled={busy || !api} maxLength={16000} />
       <button type="button" className="chat-mode-button" onClick={() => setMode(mode === "fast" ? "stable" : "fast")} disabled={busy || !api} aria-label={`AI mode: ${mode}`} aria-pressed={mode === "stable"} title={mode === "fast" ? "Fast: no thinking" : "Stable: high thinking"}>{mode}</button>
       {busy ? <button type="button" onClick={() => cancel()} aria-label="Cancel AI request">Stop</button> : <button type="submit" disabled={!api || !prompt.trim()} aria-label="Send message" title="Send message">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" /><path d="m21.854 2.147-10.94 10.939" /></svg>
