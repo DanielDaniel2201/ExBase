@@ -1,0 +1,50 @@
+<!-- With wails dev running, open /src/slides/slide-export.check.html on the Vite server. -->
+<!doctype html><html><head><script>window.EXCALIDRAW_ASSET_PATH = "/";</script></head><body><pre id="result">RUNNING</pre><script type="module">
+import { restoreElements } from '@excalidraw/excalidraw';
+import { prepareSlideExport, slidesPPT } from '/src/slides/slide-export.js';
+import { slidesHTML } from '/src/slides/slides.js';
+import JSZip from 'jszip';
+const check = (ok, message) => { if (!ok) throw new Error(message); };
+try {
+ const elements = restoreElements([
+  {id:'frame',type:'frame',x:1000,y:1000,width:800,height:450,name:'Check'},
+  {id:'box',type:'rectangle',x:1040,y:1040,width:180,height:80,frameId:'frame',backgroundColor:'#e0e0e0',boundElements:[{id:'label',type:'text'}]},
+  {id:'label',type:'text',x:1050,y:1060,width:150,height:30,text:'Editable text',originalText:'Editable text',fontSize:24,fontFamily:2,containerId:'box',frameId:'frame',link:'javascript:alert(1)'},
+  {id:'cjk',type:'text',x:1300,y:1050,width:200,height:30,text:'\u4e2d\u6587\u6587\u5b57',originalText:'\u4e2d\u6587\u6587\u5b57',fontSize:24,fontFamily:5,frameId:'frame'},
+  {id:'stroke',type:'freedraw',x:1200,y:1200,width:100,height:60,points:[[0,0],[20,30],[60,10],[100,60]],pressures:[],simulatePressure:true,frameId:'frame',strokeColor:'#ff0000'},
+  {id:'clip',type:'ellipse',x:1760,y:1300,width:100,height:100,frameId:'frame',backgroundColor:'#00ff00'},
+  {id:'arrow',type:'arrow',x:1250,y:1180,width:180,height:0,points:[[0,0],[180,0]],endArrowhead:'arrow',frameId:'frame'}
+ ], null);
+ const frame = elements.find(e=>e.id==='frame');
+ const snapshot = {elements,files:{},appState:{viewBackgroundColor:'#ffffff',frameRendering:{enabled:true,name:true,outline:true,clip:true}}};
+ const pptSlides = await prepareSlideExport([frame],snapshot,'pptx');
+ check(pptSlides[0].elements.filter(e=>e.dataURL).length===2, 'Two independent raster fallbacks');
+ const clipped=pptSlides[0].elements.find(e=>e.id==='clip'); check(Math.abs(clipped.x+clipped.width-frame.x-frame.width)<0.01, 'Fallback clipped at frame edge');
+ for (const element of pptSlides[0].elements.filter(e=>e.dataURL)) {
+  const img = new Image(); img.src=element.dataURL; await img.decode();
+  const canvas=document.createElement('canvas'); canvas.width=img.width;canvas.height=img.height;const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0);
+  const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+  check(pixels.some((v,i)=>i%4===3 && v>0),'Raster fallback is not empty '+element.id+' '+img.width+'x'+img.height);
+  check(pixels.some((v,i)=>i%4===3 && v===0),'Raster fallback preserves transparency');
+ }
+ const zip=await JSZip.loadAsync(await slidesPPT(pptSlides,'Check'),{base64:true});
+ const xml=await zip.file('ppt/slides/slide1.xml').async('string');
+ check((xml.match(/<p:pic>/g)||[]).length===2,'PPT image count');
+ check(xml.includes('Editable text'),'PPT editable text');
+ check(xml.includes('\u4e2d\u6587\u6587\u5b57'),'PPT CJK text');
+ const htmlSlides=await prepareSlideExport([frame],snapshot,'html');
+ check(!htmlSlides[0].svg.includes('javascript:'),'Inert SVG links');
+ const html=slidesHTML(htmlSlides,'Check');
+ const parsed=new DOMParser().parseFromString(html,'text/html');
+ document.head.append(...parsed.head.querySelectorAll('style'));
+ document.body.append(parsed.querySelector('main'));
+ const doc=document;
+ const text=[...doc.querySelectorAll('svg text')].find(e=>e.textContent==='Editable text');
+ check(text,'HTML real text node');
+ const range=doc.createRange();range.selectNodeContents(text);doc.getSelection().removeAllRanges();doc.getSelection().addRange(range);
+ check(doc.getSelection().toString()==='Editable text','HTML selectable text');
+ check(getComputedStyle(text).userSelect==='text','HTML selection CSS');
+ check(htmlSlides[0].svg.includes('data:font/'),'Embedded offline fonts');
+ document.getElementById('result').textContent='PASS: editable PPT text/shapes, CJK text, independent nonempty transparent clipped images, inline SVG, selectable text, offline fonts, inert links';
+} catch(error) { document.getElementById('result').textContent='FAIL: '+error.stack; }
+</script></body></html>

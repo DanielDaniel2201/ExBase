@@ -25,11 +25,14 @@ test("slides require live frames and every live content element to belong to a v
   assert.deepEqual(slideFrames(JSON.parse(JSON.stringify(ordered))).map(f => f.id), ["f2", "f1"]);
 });
 
-test("offline slide HTML escapes names and includes one self-contained image per slide in order", () => {
-  const html = slidesHTML([{ name: '<img onerror="alert(1)">', dataURL: "data:image/png;base64,first" }, { name: "Second", dataURL: "data:image/png;base64,second" }], "</title><script>alert(1)</script>");
+test("offline slide HTML escapes names and embeds selectable SVG text in slide order", () => {
+  const html = slidesHTML([{ name: '<img onerror="alert(1)">', svg: '<svg><text>First selectable text</text></svg>' }, { name: "Second", svg: '<svg><text>Second selectable text</text></svg>' }], "</title><script>alert(1)</script>");
   assert.ok(html.includes("&lt;/title&gt;"));
   assert.ok(!html.includes('<img onerror="alert(1)">'));
   assert.equal((html.match(/<figure/g) || []).length, 2);
-  assert.ok(html.indexOf("base64,first") < html.indexOf("base64,second"));
+  assert.ok(html.indexOf("First selectable text") < html.indexOf("Second selectable text"));
   assert.ok(!html.includes('src="http'));
+  assert.equal((html.match(/<svg>/g) || []).length, 2);
+  assert.ok(html.includes("user-select:text"));
+  assert.ok(!html.includes("<img src="));
 });

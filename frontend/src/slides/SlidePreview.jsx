@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { CaptureUpdateAction, exportToBlob } from "@excalidraw/excalidraw";
 import { ExportSlides } from "../../wailsjs/go/main/App";
 import { frameElements, orderedFrameElements, slideFrames } from "./slides";
-import { blobBase64, slidesPPT, slidesHTMLBase64 } from "./slide-export";
+import { blobBase64, prepareSlideExport, slidesPPT, slidesHTMLBase64 } from "./slide-export";
 
 export function SlidePreview({ api, doc, onClose }) {
   const [snapshot] = useState(() => ({ elements: structuredClone(api.getSceneElements()), files: structuredClone(api.getFiles()), appState: { ...api.getAppState() } }));
@@ -48,7 +48,7 @@ export function SlidePreview({ api, doc, onClose }) {
     if (!ready || exporting) return;
     setExporting(true); setError(""); setExported("");
     try {
-      const slides = frames.map((frame, i) => ({ name: frame.name || `Slide ${i + 1}`, width: frame.width, height: frame.height, dataURL: images[frame.id] }));
+      const slides = await prepareSlideExport(frames, snapshot, format);
       const data = format === "pptx" ? await slidesPPT(slides, doc.path.split(/[\\/]/).pop()) : await slidesHTMLBase64(slides, doc.path.split(/[\\/]/).pop());
       const path = await ExportSlides(doc.path, format, data);
       if (path) setExported(`Exported: ${path}`);
