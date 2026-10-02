@@ -79,6 +79,18 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 .settings-nav { padding: 10px 8px; border-right: 1px solid #ddd; }
 .settings-nav button { width: 100%; padding: 7px 9px; border: 0; border-radius: 5px; background: transparent; color: inherit; text-align: left; cursor: default; }
 .settings-nav button.active { background: #e5e5e7; font-weight: 600; }
+.settings-nav button { cursor: pointer; }
+.settings-panel .general-toggle { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 0; border-bottom: 1px solid #ddd; }
+.general-toggle span { display: grid; gap: 8px; }
+.general-toggle strong { font-size: 13px; font-weight: 500; }
+.general-toggle small { color: #777; line-height: 1.5; }
+.general-toggle input { appearance: none; flex-shrink: 0; width: 32px; height: 18px; margin: 0; padding: 2px; border: 0; border-radius: 10px; background: #ccc; cursor: pointer; }
+.general-toggle input::before { content: ""; display: block; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.general-toggle input:checked { background: #666; }
+.general-toggle input:checked::before { transform: translateX(14px); }
+.general-toggle input:focus-visible { background: #aaa; }
+.general-toggle input:checked:focus-visible { background: #444; }
+.general-toggle input:disabled { opacity: .5; cursor: default; }
 .settings-panel { min-width: 0; padding: 24px; overflow-y: auto; }
 .prompt-template-settings { margin-top: 24px; padding-top: 16px; border-top: 1px solid #ddd; }
 .template-heading, .template-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -136,4 +148,24 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 .chat-error { display: flex; align-items: start; gap: 8px; margin-bottom: 8px; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; background: #f7f7f8; color: #b3261e; overflow-wrap: anywhere; }
 .chat-error button { margin-left: auto; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.workspace.slides-open > aside, .workspace.slides-open > .canvas { visibility: hidden; }
+.workspace.slides-open > .titlebar { grid-column: 1 / -1; }
+.slides-document-name { align-self: center; min-width: 0; padding: 0 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: #555; }
+.slide-preview { position: fixed; z-index: 40; inset: 42px 0 0; display: grid; grid-template: auto minmax(0, 1fr) 52px / 220px minmax(0, 1fr); background: #f3f3f5; font-size: 13px; }
+.slide-preview-heading { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid #ddd; background: #f7f7f8; }
+.slide-preview button { font: inherit; color: inherit; border: 1px solid #ccc; border-radius: 6px; background: #f7f7f8; padding: 7px 10px; cursor: pointer; }
+.slide-preview button:hover:not(:disabled), .slide-preview button:focus-visible { background: #e5e5e7; }
+.slide-preview button:disabled { opacity: .4; cursor: default; }
+.slide-export-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.slide-thumbnails { grid-row: 2 / -1; padding: 12px; border-right: 1px solid #ddd; overflow-y: auto; background: #f7f7f8; }
+.slide-thumbnails .slide-thumbnail { display: grid; gap: 8px; width: 100%; margin: 0 0 10px; padding: 7px; border-color: transparent; background: transparent; text-align: left; }
+.slide-thumbnails .slide-thumbnail.active { border-color: #aaa; background: #e5e5e7; }
+.slide-thumbnail-image { display: flex; align-items: center; justify-content: center; aspect-ratio: 16 / 9; background: #fff; overflow: hidden; border-radius: 2px; }
+.slide-thumbnail-image img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.slide-thumbnail-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.slide-stage { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; padding: 24px; overflow: hidden; }
+.slide-image { display: block; max-width: 100%; max-height: 100%; object-fit: contain; box-shadow: 0 2px 16px #0002; user-select: none; }
+.slide-preview-footer { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 8px 16px; }
+.slide-export-status { flex: 0 1 auto; min-width: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #777; font-size: 12px; }
+@media (max-width: 700px) { .slide-preview { grid-template-columns: 140px minmax(0, 1fr); } .slide-preview-heading { flex-wrap: wrap; gap: 8px; } .slide-preview-heading > span { display: none; } .slide-stage { padding: 12px; } }
 @media (max-width: 700px) { .canvas-chat { left: 16px; right: 16px; bottom: 48px; } }

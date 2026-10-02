@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { CaptureUpdateAction, convertToExcalidrawElements, exportToBlob, hashString, restore, serializeAsJSON } from "@excalidraw/excalidraw";
-import { AskAI, CancelAI, CreateAISession, LoadAISettings, SaveAISettings, ResolveAICanvas, LoadPromptTemplates, SavePromptTemplates } from "../wailsjs/go/main/App";
+import { AskAI, CancelAI, CreateAISession, LoadAISettings, SaveAISettings, ResolveAICanvas, LoadPromptTemplates, SavePromptTemplates, SaveGeneralSettings } from "../wailsjs/go/main/App";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import { materializeCanvas, reconcileMermaid, renderMermaid } from "./mermaid";
 import { nextPreviewElements, rebasePreviewEdits, sceneSignature, splitMCPElements } from "./scene";
 import { matchingTemplates, firstBlank } from "./templates";
+import { slideFrames } from "./slides";
 
 // Lucide Settings (ISC), kept inline like the existing sidebar icons.
 export function SettingsIcon() {
@@ -34,7 +35,7 @@ function TemplateEditor({ template, isNew, saving, error, onSave, onDelete, onCl
   </dialog>;
 }
 
-export function SettingsModal({ onClose }) {
+export function SettingsModal({ onClose, generalSettings, onGeneralSettings }) {
   const dialog = useRef();
   const savedKey = useRef("");
   const savePromise = useRef(null);
@@ -46,6 +47,8 @@ export function SettingsModal({ onClose }) {
   const [selected, setSelected] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const savedTemplates = useRef("");
+  const [section, setSection] = useState("AI");
+  const [generalSaving, setGeneralSaving] = useState(false);
 
   useEffect(() => {
     dialog.current.showModal();
@@ -85,6 +88,7 @@ export function SettingsModal({ onClose }) {
   }
 
   async function close() {
+    if (generalSaving) return;
     if (!loaded) { onClose(); return; }
     if (await save()) onClose();
   }
@@ -95,8 +99,18 @@ export function SettingsModal({ onClose }) {
       <button type="button" className="settings-close" onClick={close} aria-label="Close settings">×</button>
     </header>
     <div className="settings-content">
-      <nav className="settings-nav" aria-label="Settings sections"><button type="button" className="active" aria-current="page">AI</button></nav>
+      <nav className="settings-nav" aria-label="Settings sections">{["General", "AI"].map((name) => <button type="button" key={name} className={section === name ? "active" : ""} aria-current={section === name ? "page" : undefined} onClick={() => setSection(name)}>{name}</button>)}</nav>
       <div className="settings-panel">
+        {section === "General" ? <>
+          <h3>Slides</h3>
+          <label className="general-toggle"><span><strong>Frame slide preview</strong><small>Show the Slides button beside New chat when every element belongs to a Frame.</small></span><input type="checkbox" role="switch" aria-label="Frame slide preview" checked={!!generalSettings?.slidesEnabled} disabled={!generalSettings || generalSaving} onChange={async (event) => {
+            const next = { ...generalSettings, slidesEnabled: event.target.checked };
+            setGeneralSaving(true); setError("");
+            try { await SaveGeneralSettings(next); onGeneralSettings(next); }
+            catch (error) { setError(String(error)); }
+            finally { setGeneralSaving(false); }
+          }} /></label>
+        </> : <>
         <h3>Model Provider</h3>
         <label htmlFor="deepseek-key">DeepSeek API Key</label>
         <div className="api-key-field">
@@ -119,6 +133,7 @@ export function SettingsModal({ onClose }) {
             {templates.map((template, index) => <button type="button" className="template-row" key={index} disabled={saving} onClick={() => { setError(""); setSelected({ index, template }); }}><span>{template.name}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>)}
           </div>
         </section>
+        </>}
         {error && <p role="alert" className="error">{error}</p>}
       </div>
     </div>
@@ -144,12 +159,13 @@ function restoreMCPElements(elements) {
   return restore({ elements: [...standard, ...converted] }, null, null, { repairBindings: true }).elements;
 }
 
-export function CanvasChat({ doc, api, aiPreview, onSettings }) {
+export function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onSlides }) {
   const [prompt, setPrompt] = useState("");
   const [templates, setTemplates] = useState([]);
   const [templateIndex, setTemplateIndex] = useState(0);
   const [templateMenu, setTemplateMenu] = useState(false);
   const composerInput = useRef();
+  const [slidesReady, setSlidesReady] = useState(false);
   const [messages, setMessages] = useState([]);
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState("fast");
@@ -166,6 +182,13 @@ export function CanvasChat({ doc, api, aiPreview, onSettings }) {
   const currentAPI = useRef(api);
   const canvasJob = useRef(null);
   currentAPI.current = api;
+
+  useEffect(() => {
+    if (!api || !slidesEnabled) { setSlidesReady(false); return; }
+    const update = (elements) => setSlidesReady(slideFrames(elements).length > 0);
+    update(api.getSceneElements());
+    return api.onChange(update);
+  }, [api, slidesEnabled]);
 
   useEffect(() => {
     let active = true;
@@ -384,6 +407,9 @@ export function CanvasChat({ doc, api, aiPreview, onSettings }) {
       <button type="button" className="chat-side-button" onClick={newChat} disabled={!api || !messages.length} aria-label="New chat" title="New chat">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
       </button>
+      {slidesReady && <button type="button" className="chat-side-button" onClick={onSlides} disabled={busy || !api} aria-label="Preview slides" title="Preview slides">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="14" rx="2" /><path d="M12 17v4m-4 0h8m-1-14-6 3 6 3z" /></svg>
+      </button>}
     </div>
     <span className="sr-only" role="status">{busy ? "AI is working" : lastReply}</span>
   </div>;

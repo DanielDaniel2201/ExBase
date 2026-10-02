@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { CaptureUpdateAction, Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
 import {
-  ChooseFolder, CreateDocument, CreateFolder, DeleteEntry, OpenDocument, ReadDirectory, Rename, Save, SwitchFolder, Workspaces,
+  ChooseFolder, CreateDocument, CreateFolder, DeleteEntry, OpenDocument, ReadDirectory, Rename, Save, SwitchFolder, Workspaces, LoadGeneralSettings,
 } from "../wailsjs/go/main/App";
 import { Quit, WindowMinimise, WindowToggleMaximise } from "../wailsjs/runtime/runtime";
 import { parseScene } from "./scene";
 import { reconcileMermaid } from "./mermaid";
 import { CanvasChat, SettingsIcon, SettingsModal } from "./AI";
+import { SlidePreview } from "./Slides.jsx";
 
 function basename(path) {
   return path.split(/[\\/]/).pop();
@@ -193,12 +194,15 @@ export default function App() {
   const [revealPath, setRevealPath] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [generalSettings, setGeneralSettings] = useState(null);
+  const [slidesOpen, setSlidesOpen] = useState(false);
   const picker = useRef();
   const autosaveTimer = useRef();
   const lastSaved = useRef("");
   const aiPreview = useRef(null);
 
   useEffect(() => {
+    LoadGeneralSettings().then(setGeneralSettings).catch((error) => setStatus(String(error)));
     Workspaces().then((state) => state.current && applyWorkspace(state)).catch((error) => setStatus(String(error)));
     function closePicker(event) {
       if (picker.current?.open && !picker.current.contains(event.target)) picker.current.open = false;
@@ -422,7 +426,7 @@ export default function App() {
 
   if (!workspace) return <main className="welcome-shell">
     <Titlebar>{settingsButton()}</Titlebar>
-    {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+    {settingsOpen && <SettingsModal generalSettings={generalSettings} onGeneralSettings={setGeneralSettings} onClose={() => setSettingsOpen(false)} />}
     <div className="welcome">
       <h1>ExBase</h1>
       <p>Open a folder containing Excalidraw files.</p>
@@ -431,7 +435,7 @@ export default function App() {
     </div>
   </main>;
 
-  return <main className={`workspace ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
+  return <main className={`workspace ${sidebarOpen ? "" : "sidebar-collapsed"} ${slidesOpen ? "slides-open" : ""}`}>
     {sidebarOpen && <aside>
       <div className="sidebar-header">
         {renderWorkspacePicker()}
@@ -478,7 +482,7 @@ export default function App() {
       {status && <small className={status === "Saved" || status === "Saving..." ? "" : "error"}>{status}</small>}
     </aside>}
     <Titlebar>
-      {!sidebarOpen && <div className="titlebar-workspace" onDoubleClick={(event) => event.stopPropagation()}>
+      {slidesOpen ? <span className="slides-document-name">{basename(doc.path)}</span> : !sidebarOpen && <div className="titlebar-workspace" onDoubleClick={(event) => event.stopPropagation()}>
         {renderWorkspacePicker()}
         {settingsButton()}
         <button className="sidebar-toggle" onClick={() => setSidebarOpen(true)} title="Expand sidebar" aria-label="Expand sidebar">
@@ -486,12 +490,13 @@ export default function App() {
         </button>
       </div>}
     </Titlebar>
-    <section className="canvas">
+    <section className="canvas" inert={slidesOpen ? "" : undefined}>
       {doc
-        ? <Excalidraw key={`canvas:${doc.path}`} initialData={{ ...doc.scene, scrollToContent: true }} excalidrawAPI={setApi} onChange={autosave} />
+        ? <Excalidraw key={`canvas:${doc.path}`} initialData={{ ...doc.scene, scrollToContent: true }} viewModeEnabled={slidesOpen} excalidrawAPI={setApi} onChange={autosave} />
         : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an <PencilRulerIcon /> Excalidraw file from the sidebar.<br />Or double-click to create a new one.</p></div>}
-      {doc && <CanvasChat key={`chat:${doc.path}`} doc={doc} api={api} aiPreview={aiPreview} onSettings={() => setSettingsOpen(true)} />}
+      {doc && <CanvasChat key={`chat:${doc.path}`} doc={doc} api={api} aiPreview={aiPreview} slidesEnabled={generalSettings?.slidesEnabled} onSlides={() => setSlidesOpen(true)} onSettings={() => setSettingsOpen(true)} />}
     </section>
-    {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+    {slidesOpen && <SlidePreview api={api} doc={doc} onClose={() => setSlidesOpen(false)} />}
+    {settingsOpen && <SettingsModal generalSettings={generalSettings} onGeneralSettings={setGeneralSettings} onClose={() => setSettingsOpen(false)} />}
   </main>;
 }
