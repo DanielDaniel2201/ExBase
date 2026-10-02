@@ -40,7 +40,7 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings }) {
   const [selected, setSelected] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const savedTemplates = useRef("");
-  const [section, setSection] = useState("AI");
+  const [section, setSection] = useState("General");
   const [generalSaving, setGeneralSaving] = useState(false);
 
   useEffect(() => {
