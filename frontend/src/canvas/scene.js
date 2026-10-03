@@ -64,5 +64,25 @@ export function splitMCPElements(elements) {
     if (!children.length) throw new Error("MCP frame contains no elements");
     shorthand[index] = { ...frame, children };
   }
+  // Restore frames directly: their children may already be complete elements,
+  // which are intentionally not passed through the shorthand converter.
+  for (const frame of shorthand.filter((element) => ["frame", "magicframe"].includes(element.type))) {
+    const members = new Set(frame.children);
+    for (const id of members) if (!ids.has(id)) throw new Error(`Missing MCP frame child: ${id}`);
+    for (const element of candidates) {
+      if (members.has(element.id)) for (const bound of element.boundElements || []) members.add(bound.id);
+    }
+    for (const list of [standard, shorthand]) {
+      for (let index = 0; index < list.length; index++) {
+        const element = list[index];
+        if (members.has(element.id) || (element.type === "text" && members.has(element.containerId))) list[index] = { ...element, frameId: frame.id };
+      }
+    }
+    const { children, ...restoredFrame } = frame;
+    standard.push(restoredFrame);
+  }
+  for (let index = shorthand.length - 1; index >= 0; index--) {
+    if (["frame", "magicframe"].includes(shorthand[index].type)) shorthand.splice(index, 1);
+  }
   return { standard, shorthand };
 }

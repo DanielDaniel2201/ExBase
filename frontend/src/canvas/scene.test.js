@@ -33,10 +33,28 @@ test("MCP frames infer contained children before Excalidraw conversion", () => {
   const frame = { id: "frame", type: "frame", x: 0, y: 0, width: 100, height: 100 };
   const inside = { id: "inside", type: "rectangle", x: 20, y: 20, width: 20, height: 20 };
   const outside = { id: "outside", type: "rectangle", x: 120, y: 20, width: 20, height: 20 };
-  const { shorthand } = splitMCPElements([frame, inside, outside]);
-  assert.deepEqual(shorthand[0].children, ["inside"]);
+  const { standard, shorthand } = splitMCPElements([frame, inside, outside]);
+  assert.deepEqual(standard, [frame]);
+  assert.deepEqual(shorthand, [{ ...inside, frameId: "frame" }, outside]);
   assert.equal(frame.children, undefined);
   assert.throws(() => splitMCPElements([frame]), /contains no elements/);
+});
+
+test("new MCP frames contain existing elements and bound text without reconverting them", () => {
+  const frame = { id: "frame", type: "frame", x: 0, y: 0, width: 100, height: 100, name: "Page" };
+  const shape = { id: "shape", type: "rectangle", x: 20, y: 20, width: 20, height: 20, version: 7, boundElements: [{ id: "label", type: "text" }] };
+  const label = { id: "label", type: "text", x: 120, y: 20, version: 3, containerId: "shape", text: "Keep" };
+  const added = { id: "added", type: "ellipse", x: 60, y: 60, width: 20, height: 20, label: { text: "New" } };
+  const outside = { id: "outside", type: "rectangle", x: 200, y: 200, version: 1 };
+  const input = [frame, shape, label, added, outside];
+  const snapshot = structuredClone(input);
+  for (const page of [frame, { ...frame, children: ["shape", "added"] }]) {
+    const { standard, shorthand } = splitMCPElements([page, ...input.slice(1)]);
+    assert.deepEqual(standard, [{ ...shape, frameId: "frame" }, { ...label, frameId: "frame" }, outside, frame]);
+    assert.deepEqual(shorthand, [{ ...added, frameId: "frame" }]);
+  }
+  assert.deepEqual(input, snapshot);
+  assert.throws(() => splitMCPElements([{ ...frame, children: ["missing"] }]), /Missing MCP frame child/);
 });
 
 test("MCP line normalization preserves absolute points before skeleton conversion", () => {
