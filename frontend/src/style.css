@@ -127,6 +127,32 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 .chat-side-button:hover:not(:disabled) { background: #e8e8ea; }
 .chat-side-button:disabled { opacity: .4; cursor: default; }
 .chat-side-button svg { width: 18px; height: 18px; }
+.chat-addons { position: relative; flex-shrink: 0; }
+.addons-menu { position: absolute; bottom: calc(100% + 8px); right: 0; width: max-content; min-width: 168px; padding: 4px; border: 1px solid #ccc; border-radius: 7px; background: #f7f7f8; box-shadow: 0 8px 24px #0002; font-size: 13px; }
+.addons-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px; border: 0; border-radius: 4px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.addons-menu button:hover:not(:disabled), .addons-menu button:focus-visible { background: #e5e5e7; }
+.addons-menu button:disabled { opacity: .4; cursor: default; }
+.addons-menu svg { width: 16px; height: 16px; }
+.recording-dot { display: inline-block; flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; background: #bd3932; }
+.addons-recording-dot { position: absolute; top: 3px; right: 3px; }
+.recording-status { display: flex; align-self: center; align-items: center; gap: 7px; height: 28px; margin: 0 8px 0 auto; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; color: #555; font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer; --wails-draggable: no-drag; }
+.recording-status:hover:not(:disabled), .recording-status:focus-visible { background: #e5e5e7; }
+.recording-status:disabled { cursor: default; }
+.recording-stop { width: 8px; height: 8px; background: currentColor; border-radius: 1px; }
+.recording-status + .window-controls { margin-left: 0; }
+.recording-notice { position: fixed; z-index: 45; top: 50px; right: 12px; display: flex; align-items: flex-start; gap: 10px; max-width: min(520px, calc(100vw - 24px)); padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; background: #f7f7f8; color: #555; box-shadow: 0 4px 16px #0002; font-size: 12px; overflow-wrap: anywhere; }
+.recording-notice button { padding: 0 3px; border: 0; border-radius: 3px; background: transparent; color: #555; font-size: 16px; cursor: pointer; }
+.recording-notice button:hover, .recording-notice button:focus-visible { background: #e5e5e7; }
+.recording-locked > aside, .recording-locked .titlebar-workspace { opacity: .55; }
+.settings-panel .recording-settings-heading { margin-top: 28px; }
+.recording-modes { margin: 18px 0 0; padding: 0; border: 0; }
+.recording-modes legend { margin-bottom: 4px; font-weight: 500; }
+.settings-panel .recording-modes label { display: flex; align-items: flex-start; gap: 10px; margin: 14px 0; }
+.recording-modes input { margin: 3px 0 0; accent-color: #666; }
+.recording-modes span { display: grid; gap: 5px; }
+.recording-modes strong { font-size: 13px; font-weight: 500; }
+.recording-modes small { color: #777; line-height: 1.5; }
+.recording-modes:disabled { opacity: .5; }
 .chat-input-bar:focus-within { border-color: #999; }
 .chat-input-bar textarea { flex: 1; min-width: 0; min-height: 28px; max-height: 240px; padding: 5px 0; border: 0; outline: none; resize: none; font: inherit; line-height: 18px; background: transparent; color: inherit; }
 .template-suggestions { position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; max-height: 200px; overflow-y: auto; padding: 5px; border: 1px solid #ccc; border-radius: 8px; background: #f7f7f8; box-shadow: 0 4px 16px #0002; }

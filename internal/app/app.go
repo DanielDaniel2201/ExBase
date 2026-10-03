@@ -4,17 +4,25 @@ import (
 	"context"
 	"exbase/internal/settings"
 	"exbase/internal/workspace"
+	"os"
 	"sync"
 )
 
 type App struct {
 	*workspace.Workspace
 	*settings.Store
-	ctx        context.Context
-	aiMu       sync.Mutex
-	aiCancel   context.CancelFunc
-	aiCanvas   *aiCanvasPending
-	canvasEmit func(AICanvasRequest)
+	ctx              context.Context
+	aiMu             sync.Mutex
+	aiCancel         context.CancelFunc
+	aiCanvas         *aiCanvasPending
+	canvasEmit       func(AICanvasRequest)
+	recordingMu      sync.Mutex
+	recordingFile    *os.File
+	recordingPath    string
+	recordingID      string
+	recordingName    string
+	recordingSaving  bool
+	recordingEncoder *mp4Encoder
 }
 
 func NewApp() *App {

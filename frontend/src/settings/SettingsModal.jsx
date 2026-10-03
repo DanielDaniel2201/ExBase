@@ -28,7 +28,7 @@ function TemplateEditor({ template, isNew, saving, error, onSave, onDelete, onCl
   </dialog>;
 }
 
-export function SettingsModal({ onClose, generalSettings, onGeneralSettings }) {
+export function SettingsModal({ onClose, generalSettings, onGeneralSettings, recordingActive = false }) {
   const dialog = useRef();
   const savedKey = useRef("");
   const savePromise = useRef(null);
@@ -86,6 +86,14 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings }) {
     if (await save()) onClose();
   }
 
+  async function saveGeneral(patch) {
+    const next = { ...generalSettings, ...patch };
+    setGeneralSaving(true); setError("");
+    try { await SaveGeneralSettings(next); onGeneralSettings(next); }
+    catch (error) { setError(String(error)); }
+    finally { setGeneralSaving(false); }
+  }
+
   return <dialog ref={dialog} className="settings-modal" onCancel={(event) => { event.preventDefault(); close(); }} onClick={(event) => { if (event.target === dialog.current) close(); }} aria-labelledby="settings-title">
     <header className="settings-heading">
       <h2 id="settings-title">Settings</h2>
@@ -96,13 +104,19 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings }) {
       <div className="settings-panel">
         {section === "General" ? <>
           <h3>Slides</h3>
-          <label className="general-toggle"><span><strong>Frame slide preview</strong><small>Show the Slides button beside New chat when every element belongs to a Frame.</small></span><input type="checkbox" role="switch" aria-label="Frame slide preview" checked={!!generalSettings?.slidesEnabled} disabled={!generalSettings || generalSaving} onChange={async (event) => {
-            const next = { ...generalSettings, slidesEnabled: event.target.checked };
-            setGeneralSaving(true); setError("");
-            try { await SaveGeneralSettings(next); onGeneralSettings(next); }
-            catch (error) { setError(String(error)); }
-            finally { setGeneralSaving(false); }
-          }} /></label>
+          <label className="general-toggle"><span><strong>Frame slide preview</strong><small>Show Preview slides in the add-ons menu when every element belongs to a Frame.</small></span><input type="checkbox" role="switch" aria-label="Frame slide preview" checked={!!generalSettings?.slidesEnabled} disabled={!generalSettings || generalSaving} onChange={(event) => saveGeneral({ slidesEnabled: event.target.checked })} /></label>
+          <h3 className="recording-settings-heading">Screen recording</h3>
+          <label className="general-toggle"><span><strong>Enable screen recording</strong><small>Show recording in the add-ons menu beside New chat.</small></span><input type="checkbox" role="switch" aria-label="Enable screen recording" checked={!!generalSettings?.recordingEnabled} disabled={!generalSettings || generalSaving || recordingActive} onChange={(event) => saveGeneral({ recordingEnabled: event.target.checked })} /></label>
+          <fieldset className="recording-modes" disabled={!generalSettings?.recordingEnabled || generalSaving || recordingActive}>
+            <legend>Recording area</legend>
+            {[
+              ["app", "Entire application", "Record this ExBase window, including Settings, the sidebar and file switches."],
+              ["canvas", "Canvas only", "Record the current canvas. You can switch files and open Settings without showing those controls."],
+              ["canvas-locked", "Canvas only, lock navigation", "Record this canvas and disable workspace, file, Settings and sidebar controls until recording stops."],
+            ].map(([value, title, help]) => <label key={value}><input type="radio" name="recording-mode" value={value} checked={(generalSettings?.recordingMode || "canvas") === value} onChange={() => saveGeneral({ recordingMode: value })} /><span><strong>{title}</strong><small>{help}</small></span></label>)}
+          </fieldset>
+          <label className="general-toggle"><span><strong>Record microphone</strong><small>Include microphone narration in the MP4. Turn off for a silent video.</small></span><input type="checkbox" role="switch" aria-label="Record microphone" checked={generalSettings?.recordingMicrophone !== false} disabled={!generalSettings?.recordingEnabled || generalSaving || recordingActive} onChange={(event) => saveGeneral({ recordingMicrophone: event.target.checked })} /></label>
+          {recordingActive && <p className="template-help">Stop recording to change recording settings.</p>}
         </> : <>
         <h3>Model Provider</h3>
         <label htmlFor="deepseek-key">DeepSeek API Key</label>

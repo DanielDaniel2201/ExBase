@@ -23,13 +23,15 @@ function restoreMCPElements(elements) {
   return restore({ elements: [...standard, ...converted] }, null, null, { repairBindings: true }).elements;
 }
 
-export function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onSlides }) {
+export function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onSlides, recordingEnabled, recording, onRecord, onStopRecording }) {
   const [prompt, setPrompt] = useState("");
   const [templates, setTemplates] = useState([]);
   const [templateIndex, setTemplateIndex] = useState(0);
   const [templateMenu, setTemplateMenu] = useState(false);
   const composerInput = useRef();
   const [slidesReady, setSlidesReady] = useState(false);
+  const [addonsOpen, setAddonsOpen] = useState(false);
+  const addons = useRef();
   const [messages, setMessages] = useState([]);
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState("fast");
@@ -46,6 +48,27 @@ export function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onS
   const currentAPI = useRef(api);
   const canvasJob = useRef(null);
   currentAPI.current = api;
+
+  const recordingActive = recording.phase !== "idle";
+  const addonsAvailable = slidesReady || recordingEnabled || recordingActive;
+  useEffect(() => {
+    if (!addonsOpen) return;
+    if (!addonsAvailable) { setAddonsOpen(false); return; }
+    const close = (event) => { if (!addons.current?.contains(event.target)) setAddonsOpen(false); };
+    const escape = (event) => {
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setAddonsOpen(false); addons.current?.querySelector("button")?.focus(); }
+      if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) && addons.current?.contains(event.target)) {
+        event.preventDefault(); event.stopPropagation();
+        const items = [...addons.current.querySelectorAll('[role="menuitem"]:not(:disabled)')];
+        if (!items.length) return;
+        const index = items.indexOf(document.activeElement);
+        items[event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : index < 0 ? (event.key === "ArrowUp" ? items.length - 1 : 0) : (index + (event.key === "ArrowUp" ? -1 : 1) + items.length) % items.length].focus();
+      }
+    };
+    document.addEventListener("pointerdown", close, true);
+    document.addEventListener("keydown", escape, true);
+    return () => { document.removeEventListener("pointerdown", close, true); document.removeEventListener("keydown", escape, true); };
+  }, [addonsOpen, addonsAvailable]);
 
   useEffect(() => {
     if (!api || !slidesEnabled) { setSlidesReady(false); return; }
@@ -271,9 +294,16 @@ export function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onS
       <button type="button" className="chat-side-button" onClick={newChat} disabled={!api || !messages.length} aria-label="New chat" title="New chat">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
       </button>
-      {slidesReady && <button type="button" className="chat-side-button" onClick={onSlides} disabled={busy || !api} aria-label="Preview slides" title="Preview slides">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="14" rx="2" /><path d="M12 17v4m-4 0h8M10 7l6 3-6 3z" /></svg>
-      </button>}
+      {addonsAvailable && <div className="chat-addons" ref={addons}>
+        <button type="button" className="chat-side-button" onClick={() => setAddonsOpen(!addonsOpen)} aria-label="Add-ons" aria-haspopup="menu" aria-expanded={addonsOpen} title="Add-ons">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
+          {recording.phase === "recording" && <span className="recording-dot addons-recording-dot" />}
+        </button>
+        {addonsOpen && <div className="addons-menu" role="menu" aria-label="Add-ons">
+          {slidesReady && <button type="button" role="menuitem" disabled={busy || !api || recording.mode === "canvas-locked" && recordingActive} onClick={() => { setAddonsOpen(false); onSlides(); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="14" rx="2" /><path d="M12 17v4m-4 0h8M10 7l6 3-6 3z" /></svg>Preview slides</button>}
+          {(recordingEnabled || recordingActive) && <button type="button" role="menuitem" disabled={recording.phase === "starting" || recording.phase === "stopping" || !api} onClick={() => { setAddonsOpen(false); recordingActive ? onStopRecording() : onRecord(); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{recordingActive ? <rect x="6" y="6" width="12" height="12" rx="2" /> : <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8m-4-4v4" /><circle cx="12" cy="10.5" r="3" /></>}</svg>{recording.phase === "starting" ? "Starting recording…" : recording.phase === "stopping" ? "Saving recording…" : recordingActive ? "Stop recording" : "Screen recording"}</button>}
+        </div>}
+      </div>}
     </div>
     <span className="sr-only" role="status">{busy ? "AI is working" : lastReply}</span>
   </div>;

@@ -9,7 +9,14 @@ import (
 )
 
 type GeneralSettings struct {
-	SlidesEnabled bool `json:"slidesEnabled"`
+	SlidesEnabled       bool   `json:"slidesEnabled"`
+	RecordingEnabled    bool   `json:"recordingEnabled"`
+	RecordingMode       string `json:"recordingMode"`
+	RecordingMicrophone bool   `json:"recordingMicrophone"`
+}
+
+func validRecordingMode(mode string) bool {
+	return mode == "app" || mode == "canvas" || mode == "canvas-locked"
 }
 
 func generalSettingsFile() (string, error) {
@@ -20,7 +27,7 @@ func generalSettingsFile() (string, error) {
 func (a *Store) LoadGeneralSettings() (GeneralSettings, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	settings := GeneralSettings{SlidesEnabled: true}
+	settings := GeneralSettings{SlidesEnabled: true, RecordingMode: "canvas", RecordingMicrophone: true}
 	path, err := generalSettingsFile()
 	if err != nil {
 		return settings, err
@@ -33,10 +40,19 @@ func (a *Store) LoadGeneralSettings() (GeneralSettings, error) {
 		return settings, err
 	}
 	err = json.Unmarshal(data, &settings)
+	if !validRecordingMode(settings.RecordingMode) {
+		settings.RecordingMode = "canvas"
+	}
 	return settings, err
 }
 
 func (a *Store) SaveGeneralSettings(settings GeneralSettings) error {
+	if settings.RecordingMode == "" {
+		settings.RecordingMode = "canvas"
+	}
+	if !validRecordingMode(settings.RecordingMode) {
+		return errors.New("invalid recording mode")
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	path, err := generalSettingsFile()

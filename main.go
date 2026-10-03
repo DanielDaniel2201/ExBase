@@ -13,13 +13,14 @@ var assets embed.FS
 func main() {
 	app := NewApp()
 	if err := wails.Run(&options.App{
-		Title:     "ExBase",
-		Width:     1100,
-		Height:    700,
-		Frameless: true,
-		Assets:    assets,
-		OnStartup: app.startup,
-		Bind:      []interface{}{app},
+		Title:         "ExBase",
+		Width:         1100,
+		Height:        700,
+		Frameless:     true,
+		Assets:        assets,
+		OnStartup:     app.startup,
+		OnBeforeClose: app.beforeClose,
+		Bind:          []interface{}{app},
 	}); err != nil {
 		println(err.Error())
 	}

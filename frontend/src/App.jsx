@@ -10,6 +10,7 @@ import { reconcileMermaid } from "./canvas/mermaid";
 import { CanvasChat } from "./canvas/CanvasChat";
 import { SettingsIcon, SettingsModal } from "./settings/SettingsModal";
 import { SlidePreview } from "./slides/SlidePreview";
+import { useRecording } from "./recording/useRecording";
 
 function basename(path) {
   return path.split(/[\\/]/).pop();
@@ -41,6 +42,21 @@ export default function App() {
   const autosaveTimer = useRef();
   const lastSaved = useRef("");
   const aiPreview = useRef(null);
+  const { recording, start: startRecording, stop: stopRecording, locked, notice, dismissNotice } = useRecording(api, doc, setStatus);
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
+
+  useEffect(() => {
+    if (!locked) return;
+    setSettingsOpen(false); setContextMenu(null); setEditingPath(null); setSelectedEntry(null);
+    if (picker.current) picker.current.open = false;
+    document.activeElement?.blur();
+    const guard = (event) => {
+      if (!event.target.closest?.(".canvas, .window-controls, .recording-status")) { event.preventDefault(); event.stopImmediatePropagation(); }
+    };
+    document.addEventListener("keydown", guard, true);
+    return () => document.removeEventListener("keydown", guard, true);
+  }, [locked]);
 
   useEffect(() => {
     LoadGeneralSettings().then(setGeneralSettings).catch((error) => setStatus(String(error)));
@@ -58,6 +74,7 @@ export default function App() {
   }, []);
 
   async function applyWorkspace(state) {
+    if (lockedRef.current) return;
     setWorkspace(state.current);
     setFolders(state.folders);
     setEntries([]);
@@ -74,6 +91,7 @@ export default function App() {
   }
 
   async function chooseFolder() {
+    if (lockedRef.current) return;
     if (picker.current) picker.current.open = false;
     try {
       if (doc && api) await save();
@@ -85,6 +103,7 @@ export default function App() {
   }
 
   async function switchFolder(path) {
+    if (lockedRef.current) return;
     if (picker.current) picker.current.open = false;
     if (path === workspace) return;
     try {
@@ -96,9 +115,11 @@ export default function App() {
   }
 
   async function openDocument(path) {
+    if (lockedRef.current) return;
     try {
       if (doc && api) await save();
       const file = await OpenDocument(path);
+      if (lockedRef.current) return;
       const scene = parseScene(file.data);
       lastSaved.current = serializeAsJSON(scene.elements, scene.appState || {}, scene.files || {}, "local");
       setApi(null);
@@ -116,6 +137,7 @@ export default function App() {
   }
 
   async function createDocument(dir = workspace) {
+    if (lockedRef.current) return;
     setContextMenu(null);
     try {
       if (doc && api) await save();
@@ -134,6 +156,7 @@ export default function App() {
   }
 
   async function createFolder(dir = workspace) {
+    if (lockedRef.current) return;
     setContextMenu(null);
     try {
       const entry = await CreateFolder(dir);
@@ -147,6 +170,7 @@ export default function App() {
   }
 
   async function renameEntry(entry, name) {
+    if (lockedRef.current) return false;
     try {
       const containsCurrent = isSameOrChild(doc?.path, entry.path);
       if (containsCurrent && api) await save();
@@ -170,6 +194,7 @@ export default function App() {
   }
 
   function showContextMenu(event, entry = null) {
+    if (lockedRef.current) { event.preventDefault(); return; }
     event.preventDefault();
     event.stopPropagation();
     setSelectedEntry(entry);
@@ -181,6 +206,7 @@ export default function App() {
   }
 
   async function deleteEntry(entry) {
+    if (lockedRef.current) return;
     setContextMenu(null);
     if (entry.isDir && !window.confirm(`Delete "${entry.name}" and everything inside it?`)) return;
     const deletesCurrent = isSameOrChild(doc?.path, entry.path);
@@ -262,12 +288,18 @@ export default function App() {
   }
 
   function settingsButton() {
-    return <button type="button" className="sidebar-toggle settings-button" onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Settings"><SettingsIcon /></button>;
+    return <button type="button" className="sidebar-toggle settings-button" disabled={locked} onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Settings"><SettingsIcon /></button>;
+  }
+
+  function recordingStatus() {
+    if (recording.phase === "idle") return null;
+    const time = `${Math.floor(recording.seconds / 60).toString().padStart(2, "0")}:${(recording.seconds % 60).toString().padStart(2, "0")}`;
+    return <button type="button" className="recording-status" disabled={recording.phase !== "recording"} onClick={stopRecording} title="Stop recording" aria-label="Stop recording"><span className="recording-dot" /><span>{recording.phase === "starting" ? "Starting…" : recording.phase === "stopping" ? "Saving…" : time}</span>{recording.phase === "recording" && <span className="recording-stop" aria-hidden="true" />}</button>;
   }
 
   if (!workspace) return <main className="welcome-shell">
-    <Titlebar>{settingsButton()}</Titlebar>
-    {settingsOpen && <SettingsModal generalSettings={generalSettings} onGeneralSettings={setGeneralSettings} onClose={() => setSettingsOpen(false)} />}
+    <Titlebar>{settingsButton()}{recordingStatus()}</Titlebar>
+    {settingsOpen && <SettingsModal generalSettings={generalSettings} onGeneralSettings={setGeneralSettings} recordingActive={recording.phase !== "idle"} onClose={() => setSettingsOpen(false)} />}
     <div className="welcome">
       <h1>ExBase</h1>
       <p>Open a folder containing Excalidraw files.</p>
@@ -276,8 +308,8 @@ export default function App() {
     </div>
   </main>;
 
-  return <main className={`workspace ${sidebarOpen ? "" : "sidebar-collapsed"} ${slidesOpen ? "slides-open" : ""}`}>
-    {sidebarOpen && <aside>
+  return <main className={`workspace ${sidebarOpen ? "" : "sidebar-collapsed"} ${slidesOpen ? "slides-open" : ""} ${locked ? "recording-locked" : ""}`}>
+    {sidebarOpen && <aside inert={locked ? "" : undefined}>
       <div className="sidebar-header">
         {renderWorkspacePicker()}
         {settingsButton()}
@@ -323,21 +355,23 @@ export default function App() {
       {status && <small className={status === "Saved" || status === "Saving..." ? "" : "error"}>{status}</small>}
     </aside>}
     <Titlebar>
-      {slidesOpen ? <span className="slides-document-name">{basename(doc.path)}</span> : !sidebarOpen && <div className="titlebar-workspace" onDoubleClick={(event) => event.stopPropagation()}>
+      {slidesOpen ? <span className="slides-document-name">{basename(doc.path)}</span> : !sidebarOpen && <div className="titlebar-workspace" inert={locked ? "" : undefined} onDoubleClick={(event) => event.stopPropagation()}>
         {renderWorkspacePicker()}
         {settingsButton()}
         <button className="sidebar-toggle" onClick={() => setSidebarOpen(true)} title="Expand sidebar" aria-label="Expand sidebar">
           <PanelLeftIcon open />
         </button>
       </div>}
+      {recordingStatus()}
     </Titlebar>
     <section className="canvas" inert={slidesOpen ? "" : undefined}>
       {doc
         ? <Excalidraw key={`canvas:${doc.path}`} initialData={{ ...doc.scene, scrollToContent: true }} viewModeEnabled={slidesOpen} excalidrawAPI={setApi} onChange={autosave} />
         : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an <PencilRulerIcon /> Excalidraw file from the sidebar.<br />Or double-click to create a new one.</p></div>}
-      {doc && <CanvasChat key={`chat:${doc.path}`} doc={doc} api={api} aiPreview={aiPreview} slidesEnabled={generalSettings?.slidesEnabled} onSlides={() => setSlidesOpen(true)} onSettings={() => setSettingsOpen(true)} />}
+      {doc && <CanvasChat key={`chat:${doc.path}`} doc={doc} api={api} aiPreview={aiPreview} slidesEnabled={generalSettings?.slidesEnabled} onSlides={() => setSlidesOpen(true)} onSettings={() => { if (!lockedRef.current) setSettingsOpen(true); }} recordingEnabled={generalSettings?.recordingEnabled} recording={recording} onRecord={() => startRecording(generalSettings.recordingMode || "canvas", generalSettings.recordingMicrophone !== false)} onStopRecording={stopRecording} />}
     </section>
     {slidesOpen && <SlidePreview api={api} doc={doc} onClose={() => setSlidesOpen(false)} />}
-    {settingsOpen && <SettingsModal generalSettings={generalSettings} onGeneralSettings={setGeneralSettings} onClose={() => setSettingsOpen(false)} />}
+    {notice && <div className={`recording-notice ${notice.error ? "error" : ""}`} role={notice.error ? "alert" : "status"}><span>{notice.text}</span><button type="button" aria-label="Dismiss recording message" onClick={dismissNotice}>×</button></div>}
+    {settingsOpen && <SettingsModal generalSettings={generalSettings} onGeneralSettings={setGeneralSettings} recordingActive={recording.phase !== "idle"} onClose={() => setSettingsOpen(false)} />}
   </main>;
 }

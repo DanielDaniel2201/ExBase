@@ -15,6 +15,8 @@ $env:PATH = "$env:GOROOT\bin;$(Resolve-Path '.tools\bin').Path;$env:PATH"
 
 Use `wails dev` while developing for frontend hot reload. Run `.\.tools\bin\wails.exe build` for final production verification; the executable is generated at `build\bin\ExBase.exe`.
 
+Recording uses FFmpeg with `libx264` and AAC for MP4 encoding and DirectShow microphone capture. Keep `ffmpeg.exe` and its `LICENSE.txt` in `.tools\ffmpeg`; the Windows post-build hook copies them beside `ExBase.exe`. Distribute that directory together. No global FFmpeg installation is required. The current local encoder is the BtbN GPL Windows build `N-118448-g43be8d0728-20250209` from https://github.com/BtbN/FFmpeg-Builds.
+
 ## AI credentials and debugging
 
 ExBase uses the official remote Excalidraw MCP Server at `https://mcp.excalidraw.com/mcp`.
