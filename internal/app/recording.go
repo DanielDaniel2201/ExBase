@@ -95,6 +95,12 @@ func (a *App) AbortRecording(id string) error {
 }
 
 func (a *App) FinishRecording(id string) (string, error) {
+	return a.finishRecording(id, func(options runtime.SaveDialogOptions) (string, error) {
+		return runtime.SaveFileDialog(a.ctx, options)
+	})
+}
+
+func (a *App) finishRecording(id string, saveDialog func(runtime.SaveDialogOptions) (string, error)) (string, error) {
 	a.recordingMu.Lock()
 	if id == "" || id != a.recordingID || a.recordingSaving {
 		a.recordingMu.Unlock()
@@ -126,16 +132,25 @@ func (a *App) FinishRecording(id string) (string, error) {
 	a.recordingSaving = true
 	a.recordingMu.Unlock()
 	defer func() { a.recordingMu.Lock(); a.recordingSaving = false; a.recordingID = ""; a.recordingMu.Unlock() }()
-	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+	path, err := saveDialog(runtime.SaveDialogOptions{
 		Title: "Save recording", DefaultFilename: name,
 		Filters: []runtime.FileFilter{{DisplayName: strings.ToUpper(strings.TrimPrefix(extension, ".")) + " video", Pattern: "*" + extension}},
 	})
 	if err != nil {
 		return "", fmt.Errorf("recording kept at %s: %w", source, err)
 	}
-	// Cancel keeps the recording locally, so closing the window cannot discard it.
 	if path == "" {
-		return source, nil
+		settings, err := a.LoadGeneralSettings()
+		if err != nil {
+			return "", fmt.Errorf("recording kept at %s: %w", source, err)
+		}
+		if settings.KeepRecordingOnCancel {
+			return source, nil
+		}
+		if err := os.Remove(source); err != nil {
+			return "", fmt.Errorf("recording could not be discarded; kept at %s: %w", source, err)
+		}
+		return "", nil
 	}
 	if !strings.EqualFold(filepath.Ext(path), extension) {
 		path += extension

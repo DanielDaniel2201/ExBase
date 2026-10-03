@@ -9,10 +9,10 @@ import (
 )
 
 type GeneralSettings struct {
-	SlidesEnabled       bool   `json:"slidesEnabled"`
-	RecordingEnabled    bool   `json:"recordingEnabled"`
-	RecordingMode       string `json:"recordingMode"`
-	RecordingMicrophone bool   `json:"recordingMicrophone"`
+	SlidesEnabled         bool   `json:"slidesEnabled"`
+	RecordingEnabled      bool   `json:"recordingEnabled"`
+	RecordingMode         string `json:"recordingMode"`
+	KeepRecordingOnCancel bool   `json:"keepRecordingOnCancel"`
 }
 
 func validRecordingMode(mode string) bool {
@@ -27,7 +27,7 @@ func generalSettingsFile() (string, error) {
 func (a *Store) LoadGeneralSettings() (GeneralSettings, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	settings := GeneralSettings{SlidesEnabled: true, RecordingMode: "canvas", RecordingMicrophone: true}
+	settings := GeneralSettings{SlidesEnabled: true, RecordingMode: "canvas"}
 	path, err := generalSettingsFile()
 	if err != nil {
 		return settings, err

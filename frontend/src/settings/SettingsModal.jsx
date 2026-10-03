@@ -9,6 +9,25 @@ export function SettingsIcon() {
   </svg>;
 }
 
+function RecordingAreaPreview({ mode }) {
+  const entire = mode === "app";
+  const locked = mode === "canvas-locked";
+  return <svg viewBox="0 0 160 104" fill="none" aria-hidden="true">
+    <rect x="12" y="10" width="136" height="84" rx="5" fill={entire ? "#d9d9dd" : "#f0f0f2"} stroke="#aaa" />
+    <g opacity={locked ? ".35" : "1"}>
+      <circle cx="21" cy="18" r="1.5" fill="#999" /><circle cx="27" cy="18" r="1.5" fill="#999" /><circle cx="33" cy="18" r="1.5" fill="#999" />
+      <rect x="19" y="32" width="17" height="3" rx="1.5" fill="#b5b5bb" />
+      <rect x="19" y="41" width="21" height="3" rx="1.5" fill="#b5b5bb" />
+      <rect x="19" y="50" width="15" height="3" rx="1.5" fill="#b5b5bb" />
+      <rect x="20" y="85" width="20" height="2" rx="1" fill="#b5b5bb" />
+    </g>
+    <rect x="47" y="27" width="95" height="52" rx="2" fill={entire ? "#ececef" : "#d9d9dd"} />
+    <path d="M66 59h15V42h20v17h18" stroke="#909098" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <rect x={entire ? 12 : 47} y={entire ? 10 : 27} width={entire ? 136 : 95} height={entire ? 84 : 52} rx={entire ? 5 : 2} stroke="#72727b" strokeWidth="1.5" strokeDasharray="4 3" />
+    {locked && <g stroke="#666" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="126" y="64" width="10" height="9" rx="2" fill="#f7f7f8" /><path d="M128 64v-2a3 3 0 0 1 6 0v2" /></g>}
+  </svg>;
+}
+
 function TemplateEditor({ template, isNew, saving, error, onSave, onDelete, onClose }) {
   const dialog = useRef();
   const [draft, setDraft] = useState(template);
@@ -103,19 +122,19 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
       <nav className="settings-nav" aria-label="Settings sections">{["General", "AI"].map((name) => <button type="button" key={name} className={section === name ? "active" : ""} aria-current={section === name ? "page" : undefined} onClick={() => setSection(name)}>{name}</button>)}</nav>
       <div className="settings-panel">
         {section === "General" ? <>
-          <h3>Slides</h3>
+          <h3 className="general-settings-heading">Slides</h3>
           <label className="general-toggle"><span><strong>Frame slide preview</strong><small>Show Preview slides in the add-ons menu when every element belongs to a Frame.</small></span><input type="checkbox" role="switch" aria-label="Frame slide preview" checked={!!generalSettings?.slidesEnabled} disabled={!generalSettings || generalSaving} onChange={(event) => saveGeneral({ slidesEnabled: event.target.checked })} /></label>
-          <h3 className="recording-settings-heading">Screen recording</h3>
+          <h3 className="general-settings-heading recording-settings-heading">Screen recording</h3>
           <label className="general-toggle"><span><strong>Enable screen recording</strong><small>Show recording in the add-ons menu beside New chat.</small></span><input type="checkbox" role="switch" aria-label="Enable screen recording" checked={!!generalSettings?.recordingEnabled} disabled={!generalSettings || generalSaving || recordingActive} onChange={(event) => saveGeneral({ recordingEnabled: event.target.checked })} /></label>
           <fieldset className="recording-modes" disabled={!generalSettings?.recordingEnabled || generalSaving || recordingActive}>
             <legend>Recording area</legend>
-            {[
+            <div className="recording-mode-options">{[
               ["app", "Entire application", "Record this ExBase window, including Settings, the sidebar and file switches."],
               ["canvas", "Canvas only", "Record the current canvas. You can switch files and open Settings without showing those controls."],
-              ["canvas-locked", "Canvas only, lock navigation", "Record this canvas and disable workspace, file, Settings and sidebar controls until recording stops."],
-            ].map(([value, title, help]) => <label key={value}><input type="radio" name="recording-mode" value={value} checked={(generalSettings?.recordingMode || "canvas") === value} onChange={() => saveGeneral({ recordingMode: value })} /><span><strong>{title}</strong><small>{help}</small></span></label>)}
+              ["canvas-locked", "Canvas only lock navigation", "Record this canvas and disable workspace, file, Settings and sidebar controls until recording stops."],
+            ].map(([value, title, help]) => <label key={value} className="recording-mode-option" title={help}><input className="sr-only" type="radio" name="recording-mode" value={value} aria-label={title} checked={(generalSettings?.recordingMode || "canvas") === value} onChange={() => saveGeneral({ recordingMode: value })} /><span className="recording-mode-preview"><RecordingAreaPreview mode={value} /></span><span className="recording-mode-name">{title}</span></label>)}</div>
           </fieldset>
-          <label className="general-toggle"><span><strong>Record microphone</strong><small>Include microphone narration in the MP4. Turn off for a silent video.</small></span><input type="checkbox" role="switch" aria-label="Record microphone" checked={generalSettings?.recordingMicrophone !== false} disabled={!generalSettings?.recordingEnabled || generalSaving || recordingActive} onChange={(event) => saveGeneral({ recordingMicrophone: event.target.checked })} /></label>
+          <label className="general-toggle"><span><strong>Keep recording on cancel</strong><small>When enabled, canceling Save keeps the video in ~/.exbase/recordings. When disabled, it discards the video.</small></span><input type="checkbox" role="switch" aria-label="Keep recording on cancel" checked={!!generalSettings?.keepRecordingOnCancel} disabled={!generalSettings?.recordingEnabled || generalSaving || recordingActive} onChange={(event) => saveGeneral({ keepRecordingOnCancel: event.target.checked })} /></label>
           {recordingActive && <p className="template-help">Stop recording to change recording settings.</p>}
         </> : <>
         <h3>Model Provider</h3>

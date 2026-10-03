@@ -21,11 +21,12 @@ export function useRecording(api, doc, onStatus) {
       clearInterval(state.clock); clearTimeout(state.timer);
       await state.frameWrite?.catch((error) => { state.error = String(error); });
       state.capture.dispose();
-      let saved = false;
+      let completed = false;
       try {
         const path = await FinishRecording(state.id);
-        const text = state.error ? `${state.error} Captured video saved: ${path}` : `Recording saved: ${path}`;
-        onStatus(text); setNotice({ text, error: !!state.error }); saved = true;
+        const result = path ? `Recording saved: ${path}` : "Recording discarded.";
+        const text = state.error ? `${state.error} ${result}` : result;
+        onStatus(text); setNotice({ text, error: !!state.error }); completed = true;
       } catch (error) {
         onStatus(String(error)); setNotice({ text: String(error), error: true });
         await AbortRecording(state.id).catch(() => {});
@@ -33,7 +34,7 @@ export function useRecording(api, doc, onStatus) {
         if (current.current === state) current.current = null;
         setRecording({ phase: "idle", mode: null, seconds: 0 });
       }
-      return saved;
+      return completed;
     })();
     return state.done;
   }

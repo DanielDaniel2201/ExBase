@@ -67,21 +67,21 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 .blank p { line-height: 1.5; }
 .blank .file-icon { display: inline-block; margin-right: 2px; vertical-align: -3px; }
 .settings-button { --wails-draggable: no-drag; align-self: center; }
-.settings-modal { width: 86vw; height: 86vh; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); padding: 0; overflow: hidden; border: 1px solid #ccc; border-radius: 8px; color: #202124; background: #f7f7f8; box-shadow: 0 12px 40px #0003; font-size: 13px; }
+.settings-modal { width: 61.4286vw; height: 64.5vh; min-width: min(560px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); padding: 0; overflow: hidden; border: 1px solid #ccc; border-radius: 8px; color: #202124; background: #f7f7f8; box-shadow: 0 12px 40px #0003; font-size: 13px; }
 .settings-modal[open] { display: flex; flex-direction: column; }
 .settings-modal::backdrop { background: #0003; }
-.settings-heading { display: flex; flex-shrink: 0; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid #ddd; }
+.settings-heading { display: flex; flex-shrink: 0; align-items: center; gap: 8px; padding: 12px 16px; }
 .settings-heading h2 { margin: 0; font-size: 14px; font-weight: 600; }
 .settings-close { margin-left: auto; }
 .settings-heading button, .chat-error button { border: 0; border-radius: 4px; background: transparent; color: #555; cursor: pointer; font-size: 18px; }
 .settings-heading button:hover { background: #e8e8ea; }
 .settings-content { flex: 1; min-height: 0; display: grid; grid-template-columns: 112px minmax(0, 1fr); }
-.settings-nav { padding: 10px 8px; border-right: 1px solid #ddd; }
+.settings-nav { padding: 10px 8px; }
 .settings-nav button { width: 100%; padding: 7px 9px; border: 0; border-radius: 5px; background: transparent; color: inherit; text-align: left; cursor: default; }
 .settings-nav button.active { background: #e5e5e7; font-weight: 600; }
 .settings-nav button { cursor: pointer; }
-.settings-panel .general-toggle { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 0; border-bottom: 1px solid #ddd; }
-.general-toggle span { display: grid; gap: 8px; }
+.settings-panel .general-toggle { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 0; padding: 4px 0; }
+.general-toggle span { display: grid; gap: 4px; }
 .general-toggle strong { font-size: 13px; font-weight: 500; }
 .general-toggle small { color: #777; line-height: 1.5; }
 .general-toggle input { appearance: none; flex-shrink: 0; width: 32px; height: 18px; margin: 0; padding: 2px; border: 0; border-radius: 10px; background: #ccc; cursor: pointer; }
@@ -92,14 +92,14 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 .general-toggle input:checked:focus-visible { background: #444; }
 .general-toggle input:disabled { opacity: .5; cursor: default; }
 .settings-panel { min-width: 0; padding: 24px; overflow-y: auto; }
-.prompt-template-settings { margin-top: 24px; padding-top: 16px; border-top: 1px solid #ddd; }
+.prompt-template-settings { margin-top: 24px; }
 .template-heading, .template-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .settings-panel .template-heading h3 { margin: 0; }
 .template-heading button, .template-actions button { padding: 5px 9px; border: 1px solid #ccc; border-radius: 5px; background: #f7f7f8; color: inherit; font: inherit; cursor: pointer; }
 .template-heading button:hover, .template-actions button:hover { background: #e8e8ea; }
 .template-help { color: #777; font-size: 12px; line-height: 1.5; }
 .template-list { max-height: 250px; overflow-y: auto; }
-.template-row { display: flex; align-items: center; gap: 12px; width: 100%; height: 50px; padding: 0 12px; border: 0; border-bottom: 1px solid #e5e5e7; border-radius: 4px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.template-row { display: flex; align-items: center; gap: 12px; width: 100%; height: 50px; padding: 0 12px; border: 0; border-radius: 4px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .template-row:hover, .template-row:focus-visible { background: #e8e8ea; }
 .template-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .template-row svg { width: 16px; height: 16px; flex-shrink: 0; color: #777; }
@@ -144,15 +144,21 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 .recording-notice button { padding: 0 3px; border: 0; border-radius: 3px; background: transparent; color: #555; font-size: 16px; cursor: pointer; }
 .recording-notice button:hover, .recording-notice button:focus-visible { background: #e5e5e7; }
 .recording-locked > aside, .recording-locked .titlebar-workspace { opacity: .55; }
-.settings-panel .recording-settings-heading { margin-top: 28px; }
-.recording-modes { margin: 18px 0 0; padding: 0; border: 0; }
-.recording-modes legend { margin-bottom: 4px; font-weight: 500; }
-.settings-panel .recording-modes label { display: flex; align-items: flex-start; gap: 10px; margin: 14px 0; }
-.recording-modes input { margin: 3px 0 0; accent-color: #666; }
-.recording-modes span { display: grid; gap: 5px; }
-.recording-modes strong { font-size: 13px; font-weight: 500; }
-.recording-modes small { color: #777; line-height: 1.5; }
+.settings-panel .general-settings-heading { margin-bottom: 8px; }
+.settings-panel .recording-settings-heading { margin-top: 24px; }
+.recording-modes { min-width: 0; margin: 18px 0 14px; padding: 0; border: 0; }
+.recording-modes legend { margin-bottom: 10px; font-weight: 500; }
+.recording-mode-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.settings-panel .recording-mode-option { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 0; margin: 0; text-align: center; cursor: pointer; }
+.recording-mode-preview { display: block; padding: 4px; border: 1px solid transparent; border-radius: 6px; background: #efeff1; }
+.recording-mode-preview svg { display: block; width: 100%; height: auto; }
+.recording-mode-option:hover .recording-mode-preview { background: #e8e8ea; }
+.recording-mode-option input:checked + .recording-mode-preview { border-color: #888; background: #e5e5e7; }
+.recording-mode-option input:focus-visible + .recording-mode-preview { outline: 2px solid #666; outline-offset: 2px; }
+.recording-mode-name { font-size: 12px; line-height: 1.5; }
+.recording-mode-option input:checked ~ .recording-mode-name { font-weight: 500; }
 .recording-modes:disabled { opacity: .5; }
+.recording-modes:disabled .recording-mode-option { cursor: default; }
 .chat-input-bar:focus-within { border-color: #999; }
 .chat-input-bar textarea { flex: 1; min-width: 0; min-height: 28px; max-height: 240px; padding: 5px 0; border: 0; outline: none; resize: none; font: inherit; line-height: 18px; background: transparent; color: inherit; }
 .template-suggestions { position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; max-height: 200px; overflow-y: auto; padding: 5px; border: 1px solid #ccc; border-radius: 8px; background: #f7f7f8; box-shadow: 0 4px 16px #0002; }

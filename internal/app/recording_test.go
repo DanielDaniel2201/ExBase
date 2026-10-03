@@ -2,10 +2,100 @@ package app
 
 import (
 	"encoding/base64"
+	"errors"
+	"exbase/internal/settings"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+func TestFinishRecordingCancelPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		keep      bool
+		save      bool
+		dialogErr bool
+		corrupt   bool
+	}{
+		{name: "cancel discards by default"},
+		{name: "cancel keeps when enabled", keep: true},
+		{name: "save with retention disabled", save: true},
+		{name: "save with retention enabled", keep: true, save: true},
+		{name: "dialog error retains recovery", dialogErr: true},
+		{name: "settings error retains recovery", corrupt: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("USERPROFILE", home)
+			t.Setenv("HOME", home)
+			a := NewApp()
+			if tc.keep || tc.save {
+				if err := a.SaveGeneralSettings(settings.GeneralSettings{KeepRecordingOnCancel: tc.keep}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			id, err := a.BeginRecording("Canvas.excalidraw", "mp4")
+			if err != nil {
+				t.Fatal(err)
+			}
+			source := a.recordingPath
+			payload := []byte("finalized video bytes")
+			if err := a.AppendRecording(id, base64.StdEncoding.EncodeToString(payload)); err != nil {
+				t.Fatal(err)
+			}
+			if tc.corrupt {
+				if err := os.WriteFile(filepath.Join(home, ".exbase", "general.json"), []byte("broken"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			destination := filepath.Join(home, "saved")
+			got, err := a.finishRecording(id, func(options runtime.SaveDialogOptions) (string, error) {
+				if options.Title != "Save recording" || filepath.Ext(options.DefaultFilename) != ".mp4" {
+					t.Fatal("incorrect save dialog options", options)
+				}
+				if tc.dialogErr {
+					return "", errors.New("dialog failed")
+				}
+				if tc.save {
+					return destination, nil
+				}
+				return "", nil
+			})
+			wantPath := ""
+			if tc.keep {
+				wantPath = source
+			}
+			if tc.save {
+				wantPath = destination + ".mp4"
+			}
+			if tc.dialogErr || tc.corrupt {
+				if err == nil || !strings.Contains(err.Error(), source) {
+					t.Fatal("recovery path missing", err)
+				}
+				wantPath = source
+			} else if err != nil || got != wantPath {
+				t.Fatal("unexpected finish result", got, err)
+			}
+			if wantPath != "" {
+				data, err := os.ReadFile(wantPath)
+				if err != nil || string(data) != string(payload) {
+					t.Fatal("recording damaged or lost", err)
+				}
+			}
+			if tc.save || (!tc.keep && !tc.dialogErr && !tc.corrupt) {
+				if _, err := os.Stat(source); !os.IsNotExist(err) {
+					t.Fatal("temporary recording retained", err)
+				}
+			}
+			if a.recordingID != "" || a.recordingSaving || a.recordingFile != nil {
+				t.Fatal("recording state was not released")
+			}
+		})
+	}
+}
 
 func TestRecordingChunksAndRecovery(t *testing.T) {
 	home := t.TempDir()
