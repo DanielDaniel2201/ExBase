@@ -48,7 +48,7 @@ export function useRecording(api, doc, onStatus) {
       state.capture = await recordingFrames(mode, () => apiRef.current);
       const firstFrame = await state.capture.frame();
       if (state.cancelled) throw Error("Recording cancelled.");
-      state.id = await BeginMP4Recording(doc?.path || "ExBase");
+      state.id = await BeginMP4Recording(doc?.path || "ExBase", microphone);
       await AppendRecordingFrame(state.id, firstFrame);
       if (state.cancelled) throw Error("Recording cancelled.");
       if (microphone) await StartRecordingMicrophone(state.id);

@@ -79,6 +79,10 @@ func (a *App) AbortRecording(id string) error {
 	}
 	encodeErr := a.finalizeMP4Locked()
 	info, err := os.Stat(a.recordingPath)
+	if os.IsNotExist(err) {
+		a.recordingID = ""
+		return nil
+	}
 	// Keep any captured frames as a recovery file, including after a write error.
 	if err == nil && info.Size() == 0 {
 		err = os.Remove(a.recordingPath)
@@ -98,7 +102,7 @@ func (a *App) FinishRecording(id string) (string, error) {
 	}
 	if err := a.finalizeMP4Locked(); err != nil {
 		a.recordingMu.Unlock()
-		return "", err
+		return "", fmt.Errorf("recording kept at %s: %w", a.recordingPath, err)
 	}
 	if a.recordingFile != nil {
 		info, err := a.recordingFile.Stat()

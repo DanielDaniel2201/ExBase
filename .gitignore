@@ -6,3 +6,6 @@ frontend/public/fonts/
 frontend/package.json.md5
 frontend/wailsjs/
 build/bin/
+internal/app/native/*.dll
+internal/app/native/*.exp
+internal/app/native/*.tmp

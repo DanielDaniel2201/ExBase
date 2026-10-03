@@ -1,0 +1,49 @@
+param([switch]$Check)
+$ErrorActionPreference = 'Stop'
+$buildLock = New-Object Threading.Mutex($false, 'Local\ExBaseNativeRecordingBuild')
+$lockHeld = $false
+try {
+    $lockHeld = $buildLock.WaitOne(60000)
+    if (!$lockHeld) { throw 'Another native recording build did not finish.' }
+    $projectRoot = Split-Path -Parent $PSScriptRoot
+    $sourcePath = Join-Path $projectRoot 'internal\app\native\recording.cpp'
+    $outputPath = Join-Path $projectRoot 'internal\app\native\recording.dll'
+    $needsBuild = !(Test-Path -LiteralPath $outputPath)
+    if (!$needsBuild) {
+        $builtAt = (Get-Item -LiteralPath $outputPath).LastWriteTimeUtc
+        $needsBuild = $builtAt -le (Get-Item -LiteralPath $sourcePath).LastWriteTimeUtc -or $builtAt -le (Get-Item -LiteralPath $PSCommandPath).LastWriteTimeUtc
+    }
+    if (!$needsBuild -and !$Check) { return }
+    $vswherePath = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    $visualStudioPath = & $vswherePath -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    if (!$visualStudioPath) { throw 'Building native recording requires Visual Studio C++ Build Tools and the Windows 10/11 SDK.' }
+    $environmentScript = Join-Path $visualStudioPath 'Common7\Tools\VsDevCmd.bat'
+    # Only the compiler environment uses cmd. No filesystem operations cross shells.
+    $compilerEnvironment = & $env:ComSpec /d /s /c "`"`"$environmentScript`" -arch=amd64 >nul && set`""
+    foreach ($line in $compilerEnvironment) {
+        if ($line -match '^([^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process') }
+    }
+    $nativeBuildPath = Join-Path $projectRoot '.tools\recording-build'
+    New-Item -ItemType Directory -Path $nativeBuildPath -Force | Out-Null
+    $libraries = @('mfplat.lib', 'mfreadwrite.lib', 'mfuuid.lib', 'ole32.lib', 'windowsapp.lib', 'd3d11.lib', 'dxgi.lib', 'windowscodecs.lib', 'user32.lib')
+    if ($needsBuild) {
+        $compiledLibraryPath = Join-Path $nativeBuildPath 'recording.dll'
+        & cl.exe /nologo /std:c++17 /EHsc /O2 /MT /LD /DUNICODE /D_UNICODE $sourcePath "/Fo$nativeBuildPath\recording.obj" /link "/OUT:$compiledLibraryPath" "/IMPLIB:$nativeBuildPath\recording.lib" $libraries
+        if ($LASTEXITCODE -ne 0) { throw 'Native recording compilation failed.' }
+        # Publish atomically; HMR and binding generation must never embed a partial DLL.
+        $temporaryLibraryPath = "$outputPath.tmp"
+        Copy-Item -LiteralPath $compiledLibraryPath -Destination $temporaryLibraryPath
+        if (Test-Path -LiteralPath $outputPath) { [IO.File]::Replace($temporaryLibraryPath, $outputPath, (Join-Path $nativeBuildPath 'recording.previous.dll')) }
+        else { [IO.File]::Move($temporaryLibraryPath, $outputPath) }
+    }
+    if ($Check) {
+        $checkSourcePath = Join-Path $projectRoot 'internal\app\native\recording.check.cpp'
+        & cl.exe /nologo /std:c++17 /EHsc /O2 /MT /DUNICODE /D_UNICODE $checkSourcePath "/Fo$nativeBuildPath\recording.check.obj" /link "/OUT:$nativeBuildPath\recording-check.exe" "/IMPLIB:$nativeBuildPath\recording-check.lib" $libraries
+        if ($LASTEXITCODE -ne 0) { throw 'Native recording check compilation failed.' }
+        & "$nativeBuildPath\recording-check.exe" fixture "$nativeBuildPath\tone.mp4"
+        if ($LASTEXITCODE -ne 0) { throw 'Native MP4 audio/video integration check failed.' }
+    }
+} finally {
+    if ($lockHeld) { $buildLock.ReleaseMutex() }
+    $buildLock.Dispose()
+}

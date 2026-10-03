@@ -6,6 +6,6 @@
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
-  "postBuildHooks": { "windows/amd64": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/package-recording.ps1" },
+  "preBuildHooks": { "windows/amd64": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/build-recording.ps1" },
   "author": { "name": "" }
 }

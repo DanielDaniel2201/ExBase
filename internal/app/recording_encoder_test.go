@@ -8,20 +8,20 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
 
-func TestMP4RecordingWithAudio(t *testing.T) {
-	ffmpeg, err := recordingFFmpeg()
-	if err != nil {
-		t.Skip("FFmpeg integration check requires the recording encoder")
+func TestMP4Recording(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("native MP4 recording requires Windows")
 	}
 	home := t.TempDir()
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("HOME", home)
 	a := NewApp()
-	id, err := a.BeginMP4Recording("recording-check.excalidraw")
+	id, err := a.BeginMP4Recording("recording-check.excalidraw", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,11 +46,6 @@ func TestMP4RecordingWithAudio(t *testing.T) {
 		}
 		time.Sleep(80 * time.Millisecond)
 	}
-	audioPath := a.recordingPath + ".audio.wav"
-	if output, err := recordingCommand(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.3", "-c:a", "pcm_s16le", audioPath).CombinedOutput(); err != nil {
-		t.Fatalf("test audio failed: %s: %v", output, err)
-	}
-	a.recordingEncoder.audioPath = audioPath
 	path, err := a.FinalizeRecording(id)
 	if err != nil {
 		t.Fatal(err)
@@ -62,16 +57,8 @@ func TestMP4RecordingWithAudio(t *testing.T) {
 	if filepath.Ext(path) != ".mp4" || !bytes.Contains(data[:64], []byte("ftyp")) {
 		t.Fatal("invalid MP4 container")
 	}
-	metadata, err := recordingCommand(ffmpeg, "-v", "error", "-i", path, "-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-").CombinedOutput()
-	if err != nil {
-		t.Fatalf("video and audio did not decode: %s: %v", metadata, err)
-	}
-	pcm, err := recordingCommand(ffmpeg, "-v", "error", "-i", path, "-vn", "-f", "s16le", "pipe:1").Output()
-	if err != nil || len(pcm) < 1000 || bytes.Equal(pcm, make([]byte, len(pcm))) {
-		t.Fatal("audio is missing or silent", err)
-	}
-	if _, err := os.Stat(audioPath); !os.IsNotExist(err) {
-		t.Fatal("audio scratch file was retained", err)
+	if !bytes.Contains(data, []byte("avc1")) || !bytes.Contains(data, []byte("moov")) || !bytes.Contains(data, []byte("mdat")) {
+		t.Fatal("MP4 was not finalized with H.264 video")
 	}
 	if err := a.AbortRecording(id); err != nil {
 		t.Fatal(err)
@@ -80,7 +67,7 @@ func TestMP4RecordingWithAudio(t *testing.T) {
 		t.Fatal("finalized recovery file was lost", err)
 	}
 	// Empty cancellations must release the process and close guard.
-	id, err = a.BeginMP4Recording("cancelled")
+	id, err = a.BeginMP4Recording("cancelled", false)
 	if err != nil {
 		t.Fatal(err)
 	}

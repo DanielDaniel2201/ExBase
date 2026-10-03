@@ -1,5 +1,5 @@
 // Run in wails dev by temporarily calling runNativeHookCheck() from App.jsx.
-// Uses the production hook, real PNG bridge, Windows microphone and FFmpeg.
+// Uses the production hook, real PNG bridge, WASAPI and Media Foundation.
 // Only the save dialog is replaced with finalization into recovery files.
 import React from "react";
 import { createRoot } from "react-dom/client";

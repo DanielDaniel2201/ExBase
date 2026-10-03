@@ -1,5 +1,5 @@
 // Run with wails dev active: node frontend/src/recording/recording.check.cjs
-// Uses .tools/ui-check Playwright plus ffmpeg/ffprobe for video pixel checks.
+// Build the native check with scripts/build-recording.ps1 -Check first.
 const { chromium } = require('../../../.tools/ui-check/node_modules/playwright');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -7,7 +7,7 @@ const path = require('node:path');
 const { execFileSync, spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const artifacts = path.resolve(__dirname, '../../../.tools/ui-check');
-const ffmpeg = path.resolve(artifacts, '../ffmpeg/ffmpeg.exe');
+const nativeCheck = path.resolve(artifacts, '../recording-build/recording-check.exe');
 const encoders = new Map();
 
 (async () => {
@@ -16,12 +16,12 @@ const encoders = new Map();
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.exposeFunction('checkBeginMP4', () => {
       const id = randomUUID(), file = path.join(artifacts, id + '.mp4');
-      const command = spawn(ffmpeg, ['-v', 'error', '-y', '-f', 'image2pipe', '-vcodec', 'png', '-framerate', '20', '-i', 'pipe:0', '-an', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', file]);
+      const command = spawn(nativeCheck, ['encode', file]);
       const done = new Promise((resolve, reject) => { command.on('error', reject); command.on('close', (code) => code === 0 ? resolve() : reject(Error('test MP4 encoder exited ' + code))); });
       done.catch(() => {}); command.stdin.on('error', () => {});
       encoders.set(id, { command, done, file }); return id;
     });
-    await page.exposeFunction('checkAppendFrame', (id, frame) => new Promise((resolve, reject) => { encoders.get(id).command.stdin.write(Buffer.from(frame, 'base64'), (error) => error ? reject(error) : resolve()); }));
+    await page.exposeFunction('checkAppendFrame', (id, frame) => new Promise((resolve, reject) => { const data = Buffer.from(frame, 'base64'); const length = Buffer.alloc(4); length.writeUInt32LE(data.length); encoders.get(id).command.stdin.write(Buffer.concat([length, data]), (error) => error ? reject(error) : resolve()); }));
     await page.exposeFunction('checkFinishMP4', async (id) => {
       const encoder = encoders.get(id); encoder.command.stdin.end(); await encoder.done;
       const encoded = fs.readFileSync(encoder.file).toString('base64'); fs.unlinkSync(encoder.file); encoders.delete(id); return encoded;
@@ -215,13 +215,12 @@ const encoders = new Map();
     assert.equal(await addons.count(), 0);
     assert.deepEqual(errors, []);
     const video = path.join(artifacts, 'recording-canvas.mp4');
-    const metadata = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=width,height,codec_name', '-show_entries', 'format=format_name', '-of', 'json', video], { encoding: 'utf8' }));
-    assert.equal(metadata.streams[0].width, 1920);
-    assert.equal(metadata.streams[0].height, 1080);
-    assert.equal(metadata.streams[0].codec_name, 'h264');
-    assert.ok(metadata.format.format_name.includes('mp4'));
-    const silent = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=format_name', '-of', 'json', path.join(artifacts, 'recording-silent.mp4')], { encoding: 'utf8' }));
-    assert.ok(silent.format.format_name.includes('mp4'));
+    const metadata = JSON.parse(execFileSync(nativeCheck, ['inspect', video], { encoding: 'utf8' }));
+    assert.equal(metadata.width, 1920);
+    assert.equal(metadata.height, 1080);
+    assert.equal(metadata.video, 'h264');
+    const silent = JSON.parse(execFileSync(nativeCheck, ['inspect', path.join(artifacts, 'recording-silent.mp4')], { encoding: 'utf8' }));
+    assert.equal(silent.audio, 'none');
     await page.evaluate(async () => {
       const chunks = window.check.videos[0].chunks.map((encoded) => Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0)));
       const video = document.createElement('video'); video.muted = true;
@@ -233,16 +232,8 @@ const encoders = new Map();
       if (!(video.currentTime > 0)) throw Error('MP4 playback did not advance');
       video.pause(); URL.revokeObjectURL(video.src); video.remove();
     });
-    const pixels = execFileSync('ffmpeg', ['-v', 'error', '-i', video, '-vf', 'setparams=color_primaries=bt709:color_trc=bt709,fps=1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { maxBuffer: 64 * 1024 * 1024 });
-    let redPixels = 0, bluePixels = 0, modalPixels = 0;
-    for (let i = 0; i < pixels.length; i += 3) {
-      const [r, g, b] = [pixels[i], pixels[i + 1], pixels[i + 2]];
-      redPixels += r > 200 && g < 60 && b < 60;
-      bluePixels += b > 200 && r < 60 && g < 60;
-      modalPixels += g > 200 && r < 60 && b < 60;
-    }
-    assert.ok(redPixels > 10000 && bluePixels > 10000, 'both files appear in the decoded video');
-    assert.equal(modalPixels, 0, 'Settings modal must not appear in decoded video');
+    assert.ok(metadata.red > 10000 && metadata.blue > 10000, 'both files appear in the decoded video');
+    assert.equal(metadata.green, 0, 'Settings modal must not appear in decoded video');
     console.log('PASS: native H.264 MP4 encoding/playback/pixels, microphone switch, no browser video encoder, continuous file switches/resize, navigation lock, native app source, safe stop and explicit close.');
   } finally { for (const encoder of encoders.values()) encoder.command.kill(); await browser.close(); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });
