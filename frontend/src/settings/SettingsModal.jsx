@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 import { LoadAISettings, SaveAISettings, LoadPromptTemplates, SavePromptTemplates, SaveGeneralSettings } from "../../wailsjs/go/main/App";
-import { srtTemplate } from "./templates";
 
 // Lucide Settings (ISC), kept inline like the existing sidebar icons.
 export function SettingsIcon() {
@@ -34,8 +33,8 @@ function TemplateEditor({ template, isNew, saving, error, onSave, onDelete, onCl
   const [draft, setDraft] = useState(template);
   useEffect(() => { dialog.current.showModal(); }, []);
   const save = () => onSave({ ...draft, name: draft.name.trim() });
-  return <dialog ref={dialog} className="settings-modal template-edit-modal" aria-labelledby="template-edit-title" onCancel={(event) => { event.preventDefault(); event.stopPropagation(); if (!saving) save(); }} onClick={(event) => { if (event.target === dialog.current && !saving) save(); }}>
-    <header className="settings-heading"><h2 id="template-edit-title">{isNew ? "New Template" : "Edit Template"}</h2><button type="button" className="settings-close" disabled={saving} onClick={save} aria-label="Close template editor">×</button></header>
+  return <dialog ref={dialog} className="settings-modal template-edit-modal" aria-labelledby="template-edit-title" onCancel={(event) => { event.preventDefault(); event.stopPropagation(); if (!saving) onClose(); }} onClick={(event) => { if (event.target === dialog.current && !saving) onClose(); }}>
+    <header className="settings-heading"><h2 id="template-edit-title">{isNew ? "New Template" : "Edit Template"}</h2><button type="button" className="settings-close" disabled={saving} onClick={onClose} aria-label="Close template editor">×</button></header>
     <fieldset disabled={saving} className="template-editor">
       <label htmlFor="prompt-template-name">Name</label>
       <input id="prompt-template-name" value={draft.name} maxLength={80} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
@@ -43,7 +42,7 @@ function TemplateEditor({ template, isNew, saving, error, onSave, onDelete, onCl
       <textarea id="prompt-template-body" value={draft.body} maxLength={16000} onChange={(event) => setDraft({ ...draft, body: event.target.value })} />
       <p className="template-help">Use {"{{topic}}"} for blanks, then edit the inserted text in chat.</p>
       {error && <p role="alert" className="error">{error}</p>}
-      <div className="template-actions"><button type="button" onClick={isNew ? onClose : onDelete}>{isNew ? "Cancel" : "Delete"}</button><button type="button" onClick={save}>Save</button></div>
+      <div className="template-actions">{!isNew && <button type="button" onClick={onDelete}>Delete template</button>}<span className="template-save-actions"><button type="button" onClick={onClose}>Cancel</button><button type="button" onClick={save}>{saving ? "Saving…" : isNew ? "Create template" : "Save changes"}</button></span></div>
     </fieldset>
   </dialog>;
 }
@@ -74,21 +73,14 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
     }).catch((error) => setError(String(error)));
   }, []);
 
-  async function save(nextTemplates = templates) {
+  async function save() {
     if (!loaded) return false;
     const value = key.trim();
-    const templatesJSON = JSON.stringify(nextTemplates);
-    if (value === savedKey.current && templatesJSON === savedTemplates.current) return true;
+    if (value === savedKey.current) return true;
     if (!value && savedKey.current) { setError("Enter your DeepSeek API key"); return false; }
     if (savePromise.current) return savePromise.current;
     setSaving(true); setError("");
     savePromise.current = (async () => {
-      if (templatesJSON !== savedTemplates.current) {
-        await SavePromptTemplates(nextTemplates);
-        setTemplates(nextTemplates);
-        savedTemplates.current = templatesJSON;
-        window.dispatchEvent(new Event("prompt-templates-changed"));
-      }
       if (value !== savedKey.current) {
         await SaveAISettings(value, "high");
         savedKey.current = value; setKey(value);
@@ -98,6 +90,21 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
       .catch((error) => { setError(String(error)); return false; })
       .finally(() => { setSaving(false); savePromise.current = null; });
     return savePromise.current;
+  }
+
+  async function saveTemplates(nextTemplates) {
+    if (!loaded || saving) return false;
+    const templatesJSON = JSON.stringify(nextTemplates);
+    if (templatesJSON === savedTemplates.current) return true;
+    setSaving(true); setError("");
+    try {
+      await SavePromptTemplates(nextTemplates);
+      setTemplates(nextTemplates);
+      savedTemplates.current = templatesJSON;
+      window.dispatchEvent(new Event("prompt-templates-changed"));
+      return true;
+    } catch (error) { setError(String(error)); return false; }
+    finally { setSaving(false); }
   }
 
   async function close() {
@@ -154,10 +161,9 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
             while (templates.some((template) => template.name.toLowerCase() === name.toLowerCase())) name = `New template ${number++}`;
             setError(""); setSelected({ index: templates.length, template: { name, body: "Describe {{topic}}" } });
           }}>+ Add</button></div>
-          <p className="template-help">Type / in chat to insert a template. Click a template to edit.</p>
+          <p className="template-help">Type / in chat to insert a template. Click to edit or delete; Save changes to keep edits.</p>
           <div className="template-list" aria-label="Prompt templates">
-            {loaded && !templates.some((template) => template.name === srtTemplate.name) && <button type="button" className="template-row" disabled={saving} onClick={() => { setError(""); setSelected({ index: templates.length, template: { ...srtTemplate } }); }}><span>{srtTemplate.name}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>}
-            {!templates.length && <p className="template-help">{loaded ? "No custom templates yet." : "Loading…"}</p>}
+            {!templates.length && <p className="template-help">{loaded ? "No templates yet." : "Loading…"}</p>}
             {templates.map((template, index) => <button type="button" className="template-row" key={index} disabled={saving} onClick={() => { setError(""); setSelected({ index, template }); }}><span>{template.name}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>)}
           </div>
         </section>
@@ -165,9 +171,9 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
         {error && <p role="alert" className="error">{error}</p>}
       </div>
     </div>
-    {selected && <TemplateEditor key={selected.index} template={selected.template} isNew={selected.index === templates.length} saving={saving} error={error} onClose={() => setSelected(null)} onSave={async (template) => {
+    {selected && <TemplateEditor key={selected.index} template={selected.template} isNew={selected.index === templates.length} saving={saving} error={error} onClose={() => { setError(""); setSelected(null); }} onSave={async (template) => {
       const next = [...templates]; next[selected.index] = template;
-      if (await save(next)) setSelected(null);
-    }} onDelete={async () => { if (await save(templates.filter((_, index) => index !== selected.index))) setSelected(null); }} />}
+      if (await saveTemplates(next)) setSelected(null);
+    }} onDelete={async () => { if (await saveTemplates(templates.filter((_, index) => index !== selected.index))) setSelected(null); }} />}
   </dialog>;
 }

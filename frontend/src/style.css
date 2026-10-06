@@ -112,6 +112,7 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 .template-editor input:focus-visible, .template-editor textarea:focus-visible { background: #fdfdfd; }
 .template-heading button:focus-visible, .template-actions button:focus-visible, .settings-heading button:focus-visible { background: #e8e8ea; }
 .template-actions { margin-top: 10px; }
+.template-save-actions { display: flex; gap: 8px; margin-left: auto; }
 .settings-panel h3 { margin: 0 0 18px; font-size: 14px; }
 .settings-panel label { display: block; margin: 14px 0 8px; }
 .api-key-field { display: flex; border: 1px solid #ccc; border-radius: 5px; background: #fff; }

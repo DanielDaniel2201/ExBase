@@ -3,6 +3,7 @@ package settings
 import (
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -12,14 +13,33 @@ func TestPromptTemplates(t *testing.T) {
 	t.Setenv("HOME", home)
 	app := (&Store{})
 	defaults, err := app.LoadPromptTemplates()
-	if err != nil || len(defaults) != 1 {
+	if err != nil || len(defaults) != 2 {
 		t.Fatal(defaults, err)
+	}
+	if defaults[1].Name != "SRT · 叙述回放" || !strings.Contains(defaults[1].Body, "SRT 文件：{{SRT 文件路径}}") {
+		t.Fatal("missing SRT preset", defaults)
+	}
+	defaults[1].Name = "My replay"
+	defaults[1].Body = "Edited replay content"
+	if err := app.SavePromptTemplates(defaults); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := (&Store{}).LoadPromptTemplates()
+	if err != nil || !reflect.DeepEqual(loaded, defaults) {
+		t.Fatal("renamed preset reappeared or lost edits", loaded, err)
+	}
+	if err := app.SavePromptTemplates(defaults[:1]); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = (&Store{}).LoadPromptTemplates()
+	if err != nil || !reflect.DeepEqual(loaded, defaults[:1]) {
+		t.Fatal("deleted preset reappeared", loaded, err)
 	}
 	templates := []PromptTemplate{{Name: "Demo", Body: "主题：{{主题}}\nKeep [other blanks] literal."}}
 	if err := app.SavePromptTemplates(templates); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := (&Store{}).LoadPromptTemplates()
+	loaded, err = (&Store{}).LoadPromptTemplates()
 	if err != nil || !reflect.DeepEqual(loaded, templates) {
 		t.Fatal(loaded, err)
 	}

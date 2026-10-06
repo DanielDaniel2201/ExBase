@@ -46,7 +46,7 @@ const destination = path.join(artifacts, 'narrated-replay-check.mp4');
       const doc = { path: 'D:\\check\\Synthetic.excalidraw', data: JSON.stringify({ type: 'excalidraw', version: 2, elements, files: {}, appState: { viewBackgroundColor: '#ffffff' } }) };
       window.go = { main: { App: {
         Workspaces: async () => ({ current: 'D:\\check', folders: ['D:\\check'] }), ReadDirectory: async () => [{ path: doc.path, name: 'Synthetic.excalidraw', isDir: false }], OpenDocument: async () => doc,
-        LoadGeneralSettings: async () => ({ slidesEnabled: false, recordingEnabled: false }), LoadPromptTemplates: async () => [], LoadAISettings: async () => ({ hasAPIKey: false }),
+        LoadGeneralSettings: async () => ({ slidesEnabled: false, recordingEnabled: false }), LoadPromptTemplates: async () => [{ name: "SRT · 叙述回放", body: "SRT 文件：{{SRT 文件路径}}" }], LoadAISettings: async () => ({ hasAPIKey: false }),
         Save: async () => { window.check.saves++; }, ChoosePresentationVideo: async () => ({ token: 'check', name: 'Synthetic.mp4', url: '/presentation-media/check' }), ReleasePresentationVideo: async () => { window.check.releases++; },
         BeginPresentationExport: async () => { window.check.exports++; window.check.frames = 0; return window.checkBeginExport(); }, AppendRecordingFrame: async (id, frame) => { await window.checkAppend(frame); window.check.frames++; }, FinishRecording: async () => window.checkFinish(), AbortRecording: async () => window.checkAbort(),
       } } };

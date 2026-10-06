@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { clampBubble, presentationFromElements, revealIndex, revealedElements, validatePresentation } from "./presentation.js";
-import { srtTemplate, templatesForChat } from "../settings/templates.js";
 
 test("narration replay reconstructs seeks, offsets and bound label visibility without mutating the scene", () => {
   const elements = [{ id: "existing" }, { id: "node", boundElements: [{ id: "text" }, { id: "arrow" }] }, { id: "text", containerId: "node" }, { id: "arrow" }];
@@ -27,12 +26,4 @@ test("face bubbles stay square and within the 16:9 stage while resizing", () => 
   assert.ok(bubble.x + bubble.size <= 1);
   assert.ok(bubble.y + bubble.size * 16 / 9 <= 1);
   assert.equal(clampBubble({ x: -1, y: -1, size: 0 }).size, .08);
-});
-
-test("SRT template stays available with existing custom templates and supports an override", () => {
-  const custom = [{ name: "Custom", body: "custom" }];
-  assert.equal(templatesForChat(custom).at(-1), srtTemplate);
-  assert.equal(custom.length, 1);
-  const override = [{ ...srtTemplate, body: "my version" }];
-  assert.equal(templatesForChat(override), override);
 });

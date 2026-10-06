@@ -5,7 +5,7 @@ import { AskAI, CancelAI, CreateAISession, LoadAISettings, ResolveAICanvas, Load
 import { EventsOn } from "../../wailsjs/runtime/runtime";
 import { materializeCanvas, reconcileMermaid, renderMermaid } from "./mermaid";
 import { nextPreviewElements, rebasePreviewEdits, sceneSignature, splitMCPElements } from "./scene";
-import { matchingTemplates, firstBlank, templatesForChat } from "../settings/templates";
+import { matchingTemplates, firstBlank } from "../settings/templates";
 import { presentationFromElements } from "../presentation/presentation";
 import { slideFrames } from "../slides/slides";
 
@@ -81,7 +81,7 @@ export function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onS
 
   useEffect(() => {
     let active = true;
-    const load = () => LoadPromptTemplates().then((value) => { if (active) setTemplates(templatesForChat(value)); }).catch((error) => { if (active) setError(String(error)); });
+    const load = () => LoadPromptTemplates().then((value) => { if (active) setTemplates(value); }).catch((error) => { if (active) setError(String(error)); });
     load();
     window.addEventListener("prompt-templates-changed", load);
     return () => { active = false; window.removeEventListener("prompt-templates-changed", load); };
