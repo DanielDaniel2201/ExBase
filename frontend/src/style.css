@@ -152,7 +152,7 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 .recording-mode-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .settings-panel .recording-mode-option { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 0; margin: 0; text-align: center; cursor: pointer; }
 .recording-mode-preview { display: block; padding: 4px; border: 1px solid transparent; border-radius: 6px; background: #efeff1; }
-.recording-mode-preview svg { display: block; width: 100%; height: auto; }
+.recording-mode-preview > svg { display: block; width: 100%; height: auto; }
 .recording-mode-option:hover .recording-mode-preview { background: #e8e8ea; }
 .recording-mode-option input:checked + .recording-mode-preview { border-color: #888; background: #e5e5e7; }
 .recording-mode-option input:focus-visible + .recording-mode-preview { outline: 2px solid #666; outline-offset: 2px; }

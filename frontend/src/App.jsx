@@ -1,14 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
+import { PanelLeftClose, PanelLeftOpen, PencilRuler, Settings } from "lucide-react";
 import { CaptureUpdateAction, Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
 import {
   ChooseFolder, CreateDocument, CreateFolder, DeleteEntry, OpenDocument, ReadDirectory, Rename, Save, SwitchFolder, Workspaces, LoadGeneralSettings,
 } from "../wailsjs/go/main/App";
-import { FileTree, PencilRulerIcon } from "./workspace/FileTree";
-import { Titlebar, PanelLeftIcon } from "./workspace/Titlebar";
+import { FileTree } from "./workspace/FileTree";
+import { Titlebar } from "./workspace/Titlebar";
 import { parseScene } from "./canvas/scene";
 import { reconcileMermaid } from "./canvas/mermaid";
 import { CanvasChat } from "./canvas/CanvasChat";
-import { SettingsIcon, SettingsModal } from "./settings/SettingsModal";
+import { SettingsModal } from "./settings/SettingsModal";
 import { SlidePreview } from "./slides/SlidePreview";
 import { useRecording } from "./recording/useRecording";
 import { NarratedReplay } from "./presentation/NarratedReplay";
@@ -291,7 +292,7 @@ export default function App() {
   }
 
   function settingsButton() {
-    return <button type="button" className="sidebar-toggle settings-button" disabled={locked} onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Settings"><SettingsIcon /></button>;
+    return <button type="button" className="sidebar-toggle settings-button" disabled={locked} onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Settings"><Settings aria-hidden="true" /></button>;
   }
 
   function recordingStatus() {
@@ -317,7 +318,7 @@ export default function App() {
         {renderWorkspacePicker()}
         {settingsButton()}
         <button className="sidebar-toggle" onClick={() => setSidebarOpen(false)} title="Collapse sidebar" aria-label="Collapse sidebar">
-          <PanelLeftIcon />
+          <PanelLeftClose aria-hidden="true" />
         </button>
       </div>
       <nav aria-label="Excalidraw files" onContextMenu={(event) => showContextMenu(event)} onKeyDown={handleTreeKeyDown}>
@@ -362,7 +363,7 @@ export default function App() {
         {renderWorkspacePicker()}
         {settingsButton()}
         <button className="sidebar-toggle" onClick={() => setSidebarOpen(true)} title="Expand sidebar" aria-label="Expand sidebar">
-          <PanelLeftIcon open />
+          <PanelLeftOpen aria-hidden="true" />
         </button>
       </div>}
       {recordingStatus()}
@@ -370,7 +371,7 @@ export default function App() {
     <section className="canvas" inert={slidesOpen ? "" : undefined}>
       {doc
         ? <Excalidraw key={`canvas:${doc.path}`} initialData={{ ...doc.scene, scrollToContent: true }} viewModeEnabled={slidesOpen} excalidrawAPI={setApi} onChange={autosave} />
-        : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an <PencilRulerIcon /> Excalidraw file from the sidebar.<br />Or double-click to create a new one.</p></div>}
+        : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an <PencilRuler className="file-icon" aria-hidden="true" /> Excalidraw file from the sidebar.<br />Or double-click to create a new one.</p></div>}
       {doc && <CanvasChat ref={chat} key={`chat:${doc.path}`} doc={doc} api={api} aiPreview={aiPreview} slidesEnabled={generalSettings?.slidesEnabled} onSlides={() => setSlidesOpen(true)} onReplay={() => setReplayOpen(true)} onSettings={() => { if (!lockedRef.current) setSettingsOpen(true); }} recordingEnabled={generalSettings?.recordingEnabled} recording={recording} onRecord={() => startRecording(generalSettings.recordingMode || "canvas")} onStopRecording={stopRecording} />}
     </section>
     {slidesOpen && <SlidePreview api={api} doc={doc} onClose={() => setSlidesOpen(false)} />}

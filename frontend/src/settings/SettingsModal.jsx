@@ -1,13 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
+import { ChevronRight, Eye, EyeOff, Lock } from "lucide-react";
 import { LoadAISettings, SaveAISettings, LoadPromptTemplates, SavePromptTemplates, SaveGeneralSettings } from "../../wailsjs/go/main/App";
-
-// Lucide Settings (ISC), kept inline like the existing sidebar icons.
-export function SettingsIcon() {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831 2.34 2.34 0 0 1 2.33-4.033 2.34 2.34 0 0 0 3.32-1.915" />
-    <circle cx="12" cy="12" r="3" />
-  </svg>;
-}
 
 function RecordingAreaPreview({ mode }) {
   const entire = mode === "app";
@@ -24,7 +17,7 @@ function RecordingAreaPreview({ mode }) {
     <rect x="47" y="27" width="95" height="52" rx="2" fill={entire ? "#ececef" : "#d9d9dd"} />
     <path d="M66 59h15V42h20v17h18" stroke="#909098" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     <rect x={entire ? 12 : 47} y={entire ? 10 : 27} width={entire ? 136 : 95} height={entire ? 84 : 52} rx={entire ? 5 : 2} stroke="#72727b" strokeWidth="1.5" strokeDasharray="4 3" />
-    {locked && <g stroke="#666" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="126" y="64" width="10" height="9" rx="2" fill="#f7f7f8" /><path d="M128 64v-2a3 3 0 0 1 6 0v2" /></g>}
+    {locked && <Lock x="123" y="58" width="16" height="16" color="#666" fill="#f7f7f8" aria-hidden="true" />}
   </svg>;
 }
 
@@ -151,8 +144,8 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
           <input id="deepseek-key" type={showKey ? "text" : "password"} value={key} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setKey(event.target.value)} onBlur={() => save()} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} placeholder="Enter your DeepSeek API key" autoComplete="off" spellCheck={false} disabled={!loaded || saving} />
           <button type="button" onClick={() => setShowKey(!showKey)} aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}>
             {showKey
-              ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m2 2 20 20" /><path d="M6.71 6.71C4.7 8.1 3.17 9.94 2.06 11.65a1 1 0 0 0 0 .7C4.01 15.36 7.57 19 12 19c1.44 0 2.77-.38 3.96-.99" /><path d="M10.73 5.08A7 7 0 0 1 12 5c4.43 0 7.99 3.64 9.94 6.65a1 1 0 0 1 0 .7 11.8 11.8 0 0 1-1.32 1.74" /><path d="M14.12 14.12A3 3 0 0 1 9.88 9.88" /></svg>
-              : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.06 12.35a1 1 0 0 1 0-.7C4.01 8.64 7.57 5 12 5s7.99 3.64 9.94 6.65a1 1 0 0 1 0 .7C19.99 15.36 16.43 19 12 19S4.01 15.36 2.06 12.35" /><circle cx="12" cy="12" r="3" /></svg>}
+              ? <EyeOff aria-hidden="true" />
+              : <Eye aria-hidden="true" />}
           </button>
         </div>
         <section className="prompt-template-settings" aria-labelledby="prompt-template-title">
@@ -164,7 +157,7 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
           <p className="template-help">Type / in chat to insert a template. Click to edit or delete; Save changes to keep edits.</p>
           <div className="template-list" aria-label="Prompt templates">
             {!templates.length && <p className="template-help">{loaded ? "No templates yet." : "Loading…"}</p>}
-            {templates.map((template, index) => <button type="button" className="template-row" key={index} disabled={saving} onClick={() => { setError(""); setSelected({ index, template }); }}><span>{template.name}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>)}
+            {templates.map((template, index) => <button type="button" className="template-row" key={index} disabled={saving} onClick={() => { setError(""); setSelected({ index, template }); }}><span>{template.name}</span><ChevronRight aria-hidden="true" /></button>)}
           </div>
         </section>
         </>}

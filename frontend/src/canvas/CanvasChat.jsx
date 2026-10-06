@@ -1,4 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { Ellipsis, MessageCircle, MonitorDot, Plus, Presentation, Send, Square, SquarePlay } from "lucide-react";
 import { flushSync } from "react-dom";
 import { CaptureUpdateAction, convertToExcalidrawElements, exportToBlob, hashString, restore, serializeAsJSON } from "@excalidraw/excalidraw";
 import { AskAI, CancelAI, CreateAISession, LoadAISettings, ResolveAICanvas, LoadPromptTemplates } from "../../wailsjs/go/main/App";
@@ -287,7 +288,7 @@ export const CanvasChat = forwardRef(function CanvasChat({ doc, api, aiPreview, 
     {error && <div className="chat-error" role="alert">{error}<button type="button" onClick={() => setError("")} aria-label="Dismiss error">×</button></div>}
     <div className="chat-composer">
       <button ref={historyButton} type="button" className="chat-side-button chat-history-button" onClick={() => setExpanded(!expanded)} aria-label="Toggle conversation" aria-expanded={expanded} title={lastReply || "Conversation"}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>
+        <MessageCircle aria-hidden="true" />
         {lastReply && !expanded && <span className="chat-reply-dot" />}
       </button>
       <form className="chat-input-bar" onSubmit={send}>
@@ -297,21 +298,21 @@ export const CanvasChat = forwardRef(function CanvasChat({ doc, api, aiPreview, 
       <textarea ref={composerInput} rows={1} aria-label="Message DeepSeek" aria-controls={showTemplates ? "prompt-template-suggestions" : undefined} aria-expanded={showTemplates} aria-activedescendant={showTemplates && suggestions.length ? `prompt-template-option-${activeTemplate}` : undefined} value={prompt} onChange={(event) => { setPrompt(event.target.value); setTemplateIndex(0); setTemplateMenu(true); }} onFocus={() => setTemplateMenu(true)} onBlur={() => setTemplateMenu(false)} onKeyDown={composerKeyDown} placeholder={busy ? (previewing ? "Drawing on this canvas…" : "AI is working on this canvas…") : "Ask AI, or / for templates…"} disabled={busy || !api} maxLength={16000} />
       <button type="button" className="chat-mode-button" onClick={() => setMode(mode === "fast" ? "stable" : "fast")} disabled={busy || !api} aria-label={`AI mode: ${mode}`} aria-pressed={mode === "stable"} title={mode === "fast" ? "Fast: no thinking" : "Stable: high thinking"}>{mode}</button>
       {busy ? <button type="button" onClick={() => cancel()} aria-label="Cancel AI request">Stop</button> : <button type="submit" disabled={!api || !prompt.trim()} aria-label="Send message" title="Send message">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" /><path d="m21.854 2.147-10.94 10.939" /></svg>
+        <Send aria-hidden="true" />
       </button>}
       </form>
       <button type="button" className="chat-side-button" onClick={newChat} disabled={!api || !messages.length} aria-label="New chat" title="New chat">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
+        <Plus aria-hidden="true" />
       </button>
       {addonsAvailable && <div className="chat-addons" ref={addons}>
         <button type="button" className="chat-side-button" onClick={() => setAddonsOpen(!addonsOpen)} aria-label="Add-ons" aria-haspopup="menu" aria-expanded={addonsOpen} title="Add-ons">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
+          <Ellipsis aria-hidden="true" />
           {recording.phase === "recording" && <span className="recording-dot addons-recording-dot" />}
         </button>
         {addonsOpen && <div className="addons-menu" role="menu" aria-label="Add-ons">
-          <button type="button" role="menuitem" disabled={busy || !api || recordingActive} onClick={() => { setAddonsOpen(false); onReplay(); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="m8 8 6 4-6 4z" /><circle cx="18" cy="6" r="2" /></svg>Narrated replay</button>
-          {slidesReady && <button type="button" role="menuitem" disabled={busy || !api || recording.mode === "canvas-locked" && recordingActive} onClick={() => { setAddonsOpen(false); onSlides(); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="14" rx="2" /><path d="M12 17v4m-4 0h8M10 7l6 3-6 3z" /></svg>Preview slides</button>}
-          {(recordingEnabled || recordingActive) && <button type="button" role="menuitem" disabled={recording.phase === "starting" || recording.phase === "stopping" || !api} onClick={() => { setAddonsOpen(false); recordingActive ? onStopRecording() : onRecord(); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{recordingActive ? <rect x="6" y="6" width="12" height="12" rx="2" /> : <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8m-4-4v4" /><circle cx="12" cy="10.5" r="3" /></>}</svg>{recording.phase === "starting" ? "Starting recording…" : recording.phase === "stopping" ? "Saving recording…" : recordingActive ? "Stop recording" : "Screen recording"}</button>}
+          <button type="button" role="menuitem" disabled={busy || !api || recordingActive} onClick={() => { setAddonsOpen(false); onReplay(); }}><SquarePlay aria-hidden="true" />Narrated replay</button>
+          {slidesReady && <button type="button" role="menuitem" disabled={busy || !api || recording.mode === "canvas-locked" && recordingActive} onClick={() => { setAddonsOpen(false); onSlides(); }}><Presentation aria-hidden="true" />Preview slides</button>}
+          {(recordingEnabled || recordingActive) && <button type="button" role="menuitem" disabled={recording.phase === "starting" || recording.phase === "stopping" || !api} onClick={() => { setAddonsOpen(false); recordingActive ? onStopRecording() : onRecord(); }}>{recordingActive ? <Square aria-hidden="true" /> : <MonitorDot aria-hidden="true" />}{recording.phase === "starting" ? "Starting recording…" : recording.phase === "stopping" ? "Saving recording…" : recordingActive ? "Stop recording" : "Screen recording"}</button>}
         </div>}
       </div>}
     </div>
