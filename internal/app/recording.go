@@ -201,3 +201,13 @@ func BeforeClose(a *App, ctx context.Context) bool {
 	}
 	return active
 }
+
+// SetRecordingWebcam configures webcam overlay for recording
+func (a *App) SetRecordingWebcam(x, y, size int, circle bool) error {
+	return setRecordingWebcam(x, y, size, circle)
+}
+
+// DisableRecordingWebcam turns off webcam overlay
+func (a *App) DisableRecordingWebcam() error {
+	return disableRecordingWebcam()
+}

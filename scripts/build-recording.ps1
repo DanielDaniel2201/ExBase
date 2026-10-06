@@ -8,15 +8,35 @@ try {
     $projectRoot = Split-Path -Parent $PSScriptRoot
     $sourcePath = Join-Path $projectRoot 'internal\app\native\recording.cpp'
     $outputPath = Join-Path $projectRoot 'internal\app\native\recording.dll'
+
+    # Check if Visual Studio is available first
+    $vswherePath = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    $hasVisualStudio = $false
+    $visualStudioPath = $null
+
+    if (Test-Path -LiteralPath $vswherePath) {
+        $visualStudioPath = & $vswherePath -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        $hasVisualStudio = [bool]$visualStudioPath
+    }
+
+    # If no Visual Studio, check if we have an existing DLL
+    if (!$hasVisualStudio) {
+        if (Test-Path -LiteralPath $outputPath) {
+            Write-Host "Visual Studio not found, using existing recording.dll"
+        } else {
+            throw 'Building native recording requires Visual Studio C++ Build Tools and the Windows 10/11 SDK.'
+        }
+        return
+    }
+
+    # Only proceed with build if we have Visual Studio
     $needsBuild = !(Test-Path -LiteralPath $outputPath)
     if (!$needsBuild) {
         $builtAt = (Get-Item -LiteralPath $outputPath).LastWriteTimeUtc
         $needsBuild = $builtAt -le (Get-Item -LiteralPath $sourcePath).LastWriteTimeUtc -or $builtAt -le (Get-Item -LiteralPath $PSCommandPath).LastWriteTimeUtc
     }
     if (!$needsBuild -and !$Check) { return }
-    $vswherePath = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-    $visualStudioPath = & $vswherePath -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-    if (!$visualStudioPath) { throw 'Building native recording requires Visual Studio C++ Build Tools and the Windows 10/11 SDK.' }
+
     $environmentScript = Join-Path $visualStudioPath 'Common7\Tools\VsDevCmd.bat'
     # Only the compiler environment uses cmd. No filesystem operations cross shells.
     $compilerEnvironment = & $env:ComSpec /d /s /c "`"`"$environmentScript`" -arch=amd64 >nul && set`""

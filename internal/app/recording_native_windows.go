@@ -150,3 +150,27 @@ func nativeRecordingWindow(window uintptr) (string, error) {
 	})
 	return encoded, err
 }
+
+func nativeRecordingEnableWebcam(x, y, size int, circle bool) error {
+	return recordingNativeCall(func() error {
+		circleFlag := uintptr(0)
+		if circle {
+			circleFlag = 1
+		}
+		return recordingNativeInvoke("RecordingEnableWebcam", uintptr(x), uintptr(y), uintptr(size), circleFlag)
+	})
+}
+
+func nativeRecordingDisableWebcam() error {
+	return recordingNativeCall(func() error {
+		return recordingNativeInvoke("RecordingDisableWebcam")
+	})
+}
+
+func setRecordingWebcam(x, y, size int, circle bool) error {
+	return nativeRecordingEnableWebcam(x, y, size, circle)
+}
+
+func disableRecordingWebcam() error {
+	return nativeRecordingDisableWebcam()
+}

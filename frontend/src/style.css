@@ -254,3 +254,76 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 .replay-status:empty { display: none; }
 .replay-footer { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
 .replay-footer > span { flex: 1; overflow-wrap: anywhere; }
+.webcam-bubble { position: absolute; width: 180px; height: 180px; border-radius: 50%; overflow: hidden; border: 3px solid rgba(255, 255, 255, 0.9); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); cursor: move; user-select: none; z-index: 1000; background: #000; transition: opacity 0.2s ease; }
+.webcam-bubble.rounded { border-radius: 16px; }
+.webcam-bubble.dragging { cursor: grabbing; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
+.webcam-bubble.hidden .webcam-video { opacity: 0; }
+.webcam-video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.webcam-toggle { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; border-radius: 50%; background: rgba(0, 0, 0, 0.6); border: none; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s ease; z-index: 1; }
+.webcam-bubble:hover .webcam-toggle { opacity: 1; }
+.webcam-toggle:hover { background: rgba(0, 0, 0, 0.8); }
+.webcam-error { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.5); color: #ef4444; padding: 16px; cursor: default; position: fixed; width: 180px; height: 180px; }
+.webcam-error-text { font-size: 12px; text-align: center; font-weight: 500; }
+.webcam-bubble.preview { border-color: rgba(102, 102, 102, 0.8); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); }
+.webcam-preview-hint { position: absolute; bottom: -32px; left: 50%; transform: translateX(-50%); padding: 4px 12px; background: rgba(0, 0, 0, 0.75); color: white; font-size: 11px; border-radius: 4px; white-space: nowrap; pointer-events: none; }
+.recording-setup-modal { z-index: 9999; }
+.recording-setup-modal { width: min(480px, calc(100vw - 48px)); padding: 0; border: 1px solid #ccc; border-radius: 8px; background: #f7f7f8; color: #202124; box-shadow: 0 12px 40px #0003; font-size: 13px; }
+.recording-setup-modal::backdrop { background: #0005; }
+.recording-setup-content { display: flex; flex-direction: column; }
+.recording-setup-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #ddd; }
+.recording-setup-header h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.recording-setup-close { padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: #555; font-size: 18px; cursor: pointer; }
+.recording-setup-close:hover { background: #e8e8ea; }
+.recording-setup-body { padding: 20px; display: flex; flex-direction: column; gap: 24px; }
+.recording-setup-section { display: flex; flex-direction: column; gap: 10px; }
+.recording-setup-toggle { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.recording-setup-toggle input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: #666; }
+.recording-setup-toggle > span { display: flex; align-items: center; gap: 8px; }
+.recording-setup-toggle strong { font-weight: 500; }
+.recording-setup-description { margin: 0; color: #777; font-size: 12px; line-height: 1.5; }
+.recording-setup-label { font-weight: 500; margin-bottom: 4px; }
+.bubble-shape-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.bubble-shape-option { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px; border: 2px solid #ddd; border-radius: 8px; background: #fff; cursor: pointer; transition: all 0.2s; }
+.bubble-shape-option:hover { background: #fafafa; border-color: #bbb; }
+.bubble-shape-option input[type="radio"] { position: absolute; opacity: 0; }
+.bubble-shape-option input[type="radio"]:checked ~ .bubble-shape-preview { color: #333; }
+.bubble-shape-option input[type="radio"]:checked ~ * { font-weight: 500; }
+.bubble-shape-option input[type="radio"]:checked + .bubble-shape-preview + .bubble-shape-name { font-weight: 500; }
+.bubble-shape-option:has(input:checked) { border-color: #666; background: #f0f0f2; }
+.bubble-shape-preview { color: #999; }
+.bubble-shape-name { font-size: 12px; color: #555; }
+.recording-setup-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid #ddd; }
+.recording-setup-footer button { padding: 7px 14px; border: 1px solid #ccc; border-radius: 6px; background: #f7f7f8; color: inherit; font: inherit; cursor: pointer; }
+.recording-setup-footer button:hover { background: #e8e8ea; }
+.recording-setup-start { background: #666 !important; color: #fff !important; border-color: #666 !important; }
+.recording-setup-start:hover { background: #555 !important; border-color: #555 !important; }
+.video-editor-overlay { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.85); }
+.video-editor { width: 90vw; height: 90vh; max-width: 1400px; display: flex; flex-direction: column; background: #f7f7f8; border-radius: 8px; overflow: hidden; }
+.video-editor-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #fff; border-bottom: 1px solid #ddd; }
+.video-editor-header h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.video-editor-close { padding: 4px; border: 0; border-radius: 4px; background: transparent; color: #555; cursor: pointer; }
+.video-editor-close:hover { background: #e8e8ea; }
+.video-editor-content { flex: 1; display: grid; grid-template-columns: 1fr 280px; gap: 0; min-height: 0; }
+.video-editor-preview { background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.video-editor-canvas { max-width: 100%; max-height: 100%; cursor: move; }
+.video-editor-sidebar { padding: 20px; background: #fff; border-left: 1px solid #ddd; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
+.video-editor-section { display: flex; flex-direction: column; gap: 12px; }
+.video-editor-section h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.video-editor-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.video-editor-toggle input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: #666; }
+.video-editor-label { font-size: 12px; font-weight: 500; margin-top: 8px; }
+.video-editor-shape-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.video-editor-shape-options button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px; border: 2px solid #ddd; border-radius: 6px; background: #fff; font-size: 11px; cursor: pointer; }
+.video-editor-shape-options button:hover { background: #fafafa; border-color: #bbb; }
+.video-editor-shape-options button.active { border-color: #666; background: #f0f0f2; font-weight: 500; }
+.video-editor-controls { display: flex; gap: 8px; }
+.video-editor-controls button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; background: #fff; font-size: 12px; cursor: pointer; }
+.video-editor-controls button:hover { background: #f0f0f2; }
+.video-editor-play { background: #666 !important; color: #fff !important; border-color: #666 !important; }
+.video-editor-play:hover { background: #555 !important; }
+.video-editor-timeline { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #777; font-variant-numeric: tabular-nums; }
+.video-editor-timeline input[type="range"] { flex: 1; accent-color: #666; }
+.video-editor-export { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; border: 1px solid #666; border-radius: 6px; background: #666; color: #fff; font-weight: 500; cursor: pointer; margin-top: auto; }
+.video-editor-export:hover:not(:disabled) { background: #555; border-color: #555; }
+.video-editor-export:disabled { opacity: 0.5; cursor: default; }
+.video-editor input[type="range"] { width: 100%; }
