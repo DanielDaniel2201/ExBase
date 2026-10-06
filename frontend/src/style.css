@@ -206,7 +206,7 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 .narrated-replay::backdrop { background: #0005; }
 .narrated-replay [hidden] { display: none !important; }
 .narrated-replay.replay-setup { width: min(650px, calc(100vw - 48px)); }
-.replay-assets { min-width: 0; border: 0; border-bottom: 1px solid #ddd; padding: 12px 14px; margin: 0; display: grid; gap: 10px; --wails-drop-target: drop; }
+.replay-assets { min-width: 0; border: 0; padding: 12px 14px; margin: 0; display: grid; gap: 10px; --wails-drop-target: drop; }
 .replay-file-row { display: flex; align-items: center; gap: 12px; }
 .replay-file-row > strong { flex: 0 0 100px; font-weight: 500; }
 .replay-file-row > span { flex: 1; min-width: 0; overflow-wrap: anywhere; color: #777; }
@@ -216,33 +216,41 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 .replay-description { display: block; margin-top: 2px; }
 .replay-description > span { color: #777; margin-left: 6px; font-size: 12px; }
 .replay-description textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; min-height: 76px; max-height: 180px; margin-top: 6px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 5px; background: #fafafa; color: #333; font: inherit; }
-.replay-asset-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #777; }
 .replay-note { margin: 0; color: #777; }
 .narrated-replay button, .narrated-replay select, .narrated-replay input[type="number"] { font: inherit; color: inherit; border: 1px solid #ccc; border-radius: 5px; background: #f7f7f8; padding: 6px 9px; }
 .narrated-replay button { cursor: pointer; }
 .narrated-replay button:hover:not(:disabled), .narrated-replay button:focus-visible { background: #e5e5e7; }
 .narrated-replay button:disabled, .replay-controls:disabled { opacity: .5; }
-.replay-heading { position: sticky; top: 0; z-index: 2; background: #f3f3f5; display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-bottom: 1px solid #ddd; }
-.replay-heading > span { flex: 1; color: #777; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.replay-stage { position: relative; aspect-ratio: 16 / 9; width: 100%; max-width: max(200px, calc(177.7778vh - 746.6667px)); margin: 0 auto; background: white; overflow: hidden; }
+.replay-heading { position: sticky; top: 0; z-index: 2; background: #f3f3f5; display: flex; align-items: center; gap: 14px; padding: 10px 14px; }
+.replay-heading > strong { flex: 1; }
+.narrated-replay .replay-close { display: flex; align-items: center; justify-content: center; padding: 5px; border: 0; background: transparent; }
+.replay-close svg { width: 18px; height: 18px; }
+.replay-layout { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 24px; padding: 8px 14px 14px; }
+.replay-main { min-width: 0; }
+.replay-sidebar { display: flex; flex-direction: column; gap: 24px; }
+.replay-stage { position: relative; aspect-ratio: 16 / 9; width: 100%; max-width: max(200px, calc(177.7778vh - 391.1111px)); margin: 0 auto; background: white; overflow: hidden; }
 .replay-stage > canvas { display: block; width: 100%; height: 100%; }
-.replay-bubble { position: absolute; aspect-ratio: 1; touch-action: none; cursor: move; }
+.replay-bubble { position: absolute; aspect-ratio: 1; border-radius: 14%; touch-action: none; cursor: move; }
+.replay-bubble.circle { border-radius: 50%; }
 .replay-bubble > video { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; border-radius: 14%; }
 .replay-bubble.circle > video { border-radius: 50%; }
-.replay-bubble:focus-visible { outline: 2px solid #777; outline-offset: 3px; }
-.narrated-replay .replay-resize { position: absolute; bottom: 0; right: 0; padding: 1px 5px; line-height: 20px; cursor: nwse-resize; touch-action: none; opacity: 0; }
+.replay-bubble:hover, .replay-bubble:focus-within { outline: 1px solid #888; outline-offset: 2px; }
+.narrated-replay .replay-resize { position: absolute; bottom: -4px; right: -4px; width: 10px; height: 10px; padding: 0; border: 1px solid #666; border-radius: 2px; background: #fff; cursor: nwse-resize; touch-action: none; opacity: 0; }
 .replay-bubble:hover .replay-resize, .replay-bubble:focus-within .replay-resize { opacity: 1; }
-.replay-controls { min-width: 0; margin: 0; padding: 12px 14px 0; border: 0; }
-.replay-options, .replay-transport { display: flex; align-items: center; gap: 12px; }
-.replay-options { flex-wrap: wrap; }
-.replay-options label { display: flex; align-items: center; gap: 6px; }
-.replay-options input[type="range"] { width: 90px; }
-.replay-options input[type="number"] { width: 60px; }
-.replay-video-name { flex: 1; min-width: 100px; max-width: 270px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #777; }
-.replay-transport { margin-top: 12px; }
+.replay-controls { min-width: 0; margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 18px; }
+.replay-shape { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.replay-size { display: flex; flex-direction: column; gap: 10px; }
+.replay-size input { width: 100%; margin: 0; }
+.narrated-replay .replay-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 6px; border: 0; background: transparent; }
+.replay-icon-button svg { width: 20px; height: 20px; }
+.replay-transport { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 8px 0 0; padding: 0; border: 0; }
 .replay-transport input { flex: 1; min-width: 30px; }
 .replay-transport > span { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.replay-controls input[type="range"] { accent-color: #777; }
-.replay-caption { min-height: 20px; padding: 8px 14px; color: #777; white-space: pre-line; }
-.replay-footer { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid #ddd; }
+.replay-controls input[type="range"], .replay-transport input[type="range"] { accent-color: #777; }
+.replay-caption { min-height: 20px; padding: 4px 0; color: #777; white-space: pre-line; }
+.replay-format { display: flex; gap: 14px; color: #777; font-size: 12px; }
+.replay-export { display: flex; flex-direction: column; gap: 10px; margin-top: auto; }
+.replay-status { color: #777; font-size: 12px; overflow-wrap: anywhere; }
+.replay-status:empty { display: none; }
+.replay-footer { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
 .replay-footer > span { flex: 1; overflow-wrap: anywhere; }

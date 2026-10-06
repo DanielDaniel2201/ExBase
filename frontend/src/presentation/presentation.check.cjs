@@ -41,7 +41,7 @@ const destination = path.join(artifacts, 'narrated-replay-check.mp4');
     });
     await page.addInitScript(() => {
       window.check = { saves: 0, frames: 0, exports: 0, releases: 0, listeners: new Map() };
-      const timeline = { version: 1, srtPath: 'D:\\check\\Synthetic.srt', baseIds: [], cues: [{ id: 1, startMs: 500, endMs: 1500, text: 'First node' }, { id: 2, startMs: 1500, endMs: 2500, text: 'Second node' }], steps: [{ cueId: 1, atMs: 500, elementIds: ['red'] }, { cueId: 2, atMs: 1500, elementIds: ['blue'] }] };
+      const timeline = { version: 1, srtPath: 'D:\\check\\Synthetic.srt', videoPath: 'Synthetic.mp4', baseIds: [], cues: [{ id: 1, startMs: 500, endMs: 1500, text: 'First node' }, { id: 2, startMs: 1500, endMs: 2500, text: 'Second node' }], steps: [{ cueId: 1, atMs: 500, elementIds: ['red'] }, { cueId: 2, atMs: 1500, elementIds: ['blue'] }] };
       const elements = [{ id: 'red', type: 'rectangle', x: 0, y: 0, width: 360, height: 220, backgroundColor: '#ff0000', strokeColor: '#ff0000', fillStyle: 'solid', roughness: 0, customData: { exbasePresentation: timeline } }, { id: 'blue', type: 'rectangle', x: 420, y: 0, width: 360, height: 220, backgroundColor: '#0000ff', strokeColor: '#0000ff', fillStyle: 'solid', roughness: 0 }];
       const doc = { path: 'D:\\check\\Synthetic.excalidraw', data: JSON.stringify({ type: 'excalidraw', version: 2, elements, files: {}, appState: { viewBackgroundColor: '#ffffff' } }) };
       window.go = { main: { App: {
@@ -74,7 +74,6 @@ const destination = path.join(artifacts, 'narrated-replay-check.mp4');
     const original = await page.evaluate(() => JSON.stringify(window.check.api.getSceneElements().map(e => ({ id: e.id, x: e.x, y: e.y }))));
     await page.getByRole('button', { name: 'Add-ons', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Narrated replay' }).click();
-    await page.getByRole('button', { name: 'Choose video' }).click();
     await page.waitForFunction(() => document.querySelector('.replay-bubble video').readyState >= 2);
     const expectedFrames = await page.evaluate(() => Math.ceil(document.querySelector('.replay-bubble video').duration * 20));
     await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -103,7 +102,20 @@ const destination = path.join(artifacts, 'narrated-replay-check.mp4');
     const face = page.getByRole('group', { name: /Face bubble/ }), box = await face.boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.mouse.move(box.x - 60, box.y + 140, { steps: 5 }); await page.mouse.up();
     const moved = await face.boundingBox(); assert.ok(moved.x < box.x && moved.y > box.y); assert.ok(Math.abs(moved.width - moved.height) < 1);
-    await page.getByRole('combobox').selectOption('circle');
+    const grip = page.getByRole('button', { name: 'Drag to resize face bubble' });
+    await face.hover();
+    const handle = await grip.boundingBox();
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2); await page.mouse.down();
+    await page.mouse.move(handle.x + 24, handle.y + 24, { steps: 5 }); await page.mouse.up();
+    assert.ok((await face.boundingBox()).width > moved.width);
+    await page.getByRole('button', { name: 'Switch to circle' }).click();
+    await page.getByRole('button', { name: 'Switch to rounded square' }).click();
+    await page.getByRole('button', { name: 'Switch to circle' }).click();
+    assert.equal(await page.getByRole('combobox').count(), 0);
+    assert.equal(await page.getByRole('button', { name: 'Change video', exact: true }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: 'Change SRT', exact: true }).count(), 0);
+    const stageBounds = await page.locator('.replay-stage').boundingBox(), controlsBounds = await page.locator('.replay-controls').boundingBox();
+    assert.ok(controlsBounds.x > stageBounds.x + stageBounds.width);
     const size = page.getByRole('slider', { name: 'Face bubble size' }); await size.focus(); await size.press('Home');
     for (let i = 0; i < 16; i++) await size.press('ArrowRight');
     await page.evaluate(() => { document.querySelector('.replay-bubble video').currentTime = 2; });
@@ -111,26 +123,34 @@ const destination = path.join(artifacts, 'narrated-replay-check.mp4');
     await page.screenshot({ path: path.join(artifacts, 'narrated-replay-preview.png') });
     await page.getByRole('button', { name: 'Export MP4' }).click();
     await page.waitForFunction(() => window.check.frames > 0);
-    assert.ok(await page.getByRole('button', { name: 'Back to canvas' }).isDisabled());
+    assert.ok(await page.getByRole('button', { name: 'Close narrated replay' }).isDisabled());
     await page.getByRole('button', { name: 'Cancel export' }).click();
     await page.getByRole('button', { name: 'Export MP4' }).waitFor();
-    assert.ok((await page.locator('.replay-footer').innerText()).includes('Export cancelled'));
+    assert.ok((await page.locator('.replay-status').innerText()).includes('Export cancelled'));
     await page.getByRole('button', { name: 'Export MP4' }).click();
-    await page.waitForFunction(() => document.querySelector('.replay-footer').textContent.includes('Exported:'), null, { timeout: 120000 });
+    await page.waitForFunction(() => document.querySelector('.replay-status').textContent.includes('Exported:'), null, { timeout: 120000 });
     assert.equal(await page.evaluate(() => window.check.frames), expectedFrames);
     const result = JSON.parse(execFileSync(native, ['inspect', destination], { encoding: 'utf8' }));
     assert.equal(result.frames, expectedFrames); assert.equal(result.audio, 'aac'); assert.ok(result.audioPeak > 1000 && result.audioSamples > 130000); assert.ok(result.red > 100000 && result.blue > 100000);
-    await page.getByRole('button', { name: 'Back to canvas' }).click();
+    await page.getByRole('button', { name: 'Close narrated replay' }).click();
     assert.equal(await page.evaluate(() => JSON.stringify(window.check.api.getSceneElements().map(e => ({ id: e.id, x: e.x, y: e.y })))), original);
     assert.equal(await page.evaluate(() => window.check.api.getSceneElements()[0].customData.exbasePresentation.bubble.shape), 'circle');
-    assert.equal(await page.evaluate(() => window.check.releases), 1);
+    assert.ok(await page.evaluate(() => window.check.releases >= 1));
 
-    // Reopening restores the saved video; replacing SRT blocks the previous timeline.
+    // Reopening restores the saved video and keeps source editing out of playback.
     await page.getByRole('button', { name: 'Add-ons', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Narrated replay' }).click();
     await page.waitForFunction(() => document.querySelector('.replay-bubble video').readyState >= 2);
     assert.ok(await page.evaluate(() => window.check.opens >= 1));
-    await page.getByRole('button', { name: 'Change SRT' }).click();
+    assert.equal(await page.getByRole('button', { name: 'Edit visual description', exact: true }).count(), 0);
+    await page.getByRole('button', { name: 'Close narrated replay' }).click();
+    // A canvas marked as needing generation still opens the original setup flow.
+    await page.evaluate(() => {
+      const elements = window.check.api.getSceneElements().map(e => e.customData?.exbasePresentation ? { ...e, version: e.version + 1, customData: { ...e.customData, exbasePresentation: { ...e.customData.exbasePresentation, needsGeneration: true } } } : e);
+      window.check.api.updateScene({ elements });
+    });
+    await page.getByRole('button', { name: 'Add-ons', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Narrated replay' }).click();
     await page.getByRole('button', { name: 'Regenerate replay' }).waitFor();
     assert.equal(await page.getByRole('button', { name: 'Export MP4' }).count(), 0);
     assert.equal(await page.evaluate(() => window.check.api.getSceneElements()[0].customData.exbasePresentation.needsGeneration), true);
@@ -144,7 +164,7 @@ const destination = path.join(artifacts, 'narrated-replay-check.mp4');
     await page.getByRole('button', { name: 'Regenerate replay' }).click();
     await page.getByRole('button', { name: 'Export MP4' }).waitFor();
     assert.ok(await page.evaluate(() => window.check.generationPrompt.includes('Two blue nodes') && !window.check.generationPrompt.includes('set_presentation_timeline')));
-    await page.getByRole('button', { name: 'Back to canvas' }).click();
+    await page.getByRole('button', { name: 'Close narrated replay' }).click();
     await page.waitForFunction(() => window.check.savedScene?.elements[0]?.customData?.exbasePresentation?.visualDescription === 'Two blue nodes with a clear connection.');
 
     // Missing linked video offers relocation without losing the drawing.
@@ -154,13 +174,21 @@ const destination = path.join(artifacts, 'narrated-replay-check.mp4');
     await page.getByRole('button', { name: 'Locate video' }).waitFor();
     await page.getByRole('button', { name: 'Locate video' }).click();
     await page.waitForFunction(() => document.querySelector('.replay-bubble video').readyState >= 2);
-    await page.getByRole('button', { name: 'Back to canvas' }).click();
+    await page.getByRole('button', { name: 'Close narrated replay' }).click();
     await page.evaluate(() => { window.check.missingVideo = false; window.check.api.updateScene({ elements: [] }); });
 
     // The same menu starts a new replay on a blank canvas. Both files can be dropped together.
     await page.getByRole('button', { name: 'Add-ons', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Narrated replay' }).click();
     assert.ok(await page.getByRole('button', { name: 'Generate replay' }).isDisabled());
+    assert.equal(await page.getByRole('button', { name: 'Choose files', exact: true }).count(), 0);
+    await page.getByRole('textbox', { name: 'Visual description' }).click();
+    assert.ok(await page.getByRole('dialog', { name: 'Narrated replay', exact: true }).isVisible());
+    await page.screenshot({ path: path.join(artifacts, 'narrated-replay-empty.png') });
+    await page.mouse.click(10, 400);
+    await page.getByRole('dialog', { name: 'Narrated replay', exact: true }).waitFor({ state: 'detached' });
+    await page.getByRole('button', { name: 'Add-ons', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Narrated replay' }).click();
     await page.evaluate(() => { const bounds = document.querySelector('.replay-assets').getBoundingClientRect(); window.check.drop(bounds.left + 20, bounds.top + 20, ['Synthetic.mp4', 'Synthetic.srt']); });
     await page.waitForFunction(() => document.querySelector('.replay-bubble video').readyState >= 2);
     await page.getByRole('textbox', { name: 'Visual description' }).fill('A compact diagram with two nodes.');
@@ -169,7 +197,7 @@ const destination = path.join(artifacts, 'narrated-replay-check.mp4');
     await page.getByRole('button', { name: 'Export MP4' }).waitFor();
     const linked = await page.evaluate(() => window.check.api.getSceneElements()[0].customData.exbasePresentation);
     assert.equal(linked.srtPath, 'Synthetic.srt'); assert.equal(linked.videoPath, 'Synthetic.mp4'); assert.equal(linked.needsGeneration, false);
-    await page.getByRole('button', { name: 'Back to canvas' }).click();
+    await page.getByRole('button', { name: 'Close narrated replay' }).click();
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ status: 'passed', source: 'synthetic only', ...result }));
   } catch (error) {

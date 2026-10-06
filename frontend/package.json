@@ -13,9 +13,10 @@
     "@excalidraw/excalidraw": "0.18.1",
     "@excalidraw/mermaid-to-excalidraw": "2.2.2",
     "@vitejs/plugin-react": "4.3.4",
-    "vite": "5.4.14",
+    "lucide-react": "1.52.0",
+    "pptxgenjs": "4.0.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "pptxgenjs": "4.0.1"
+    "vite": "5.4.14"
   }
 }
