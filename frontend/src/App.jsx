@@ -11,6 +11,7 @@ import { CanvasChat } from "./canvas/CanvasChat";
 import { SettingsIcon, SettingsModal } from "./settings/SettingsModal";
 import { SlidePreview } from "./slides/SlidePreview";
 import { useRecording } from "./recording/useRecording";
+import { NarratedReplay } from "./presentation/NarratedReplay";
 
 function basename(path) {
   return path.split(/[\\/]/).pop();
@@ -38,6 +39,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [generalSettings, setGeneralSettings] = useState(null);
   const [slidesOpen, setSlidesOpen] = useState(false);
+  const [replayOpen, setReplayOpen] = useState(false);
   const picker = useRef();
   const autosaveTimer = useRef();
   const lastSaved = useRef("");
@@ -368,9 +370,10 @@ export default function App() {
       {doc
         ? <Excalidraw key={`canvas:${doc.path}`} initialData={{ ...doc.scene, scrollToContent: true }} viewModeEnabled={slidesOpen} excalidrawAPI={setApi} onChange={autosave} />
         : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an <PencilRulerIcon /> Excalidraw file from the sidebar.<br />Or double-click to create a new one.</p></div>}
-      {doc && <CanvasChat key={`chat:${doc.path}`} doc={doc} api={api} aiPreview={aiPreview} slidesEnabled={generalSettings?.slidesEnabled} onSlides={() => setSlidesOpen(true)} onSettings={() => { if (!lockedRef.current) setSettingsOpen(true); }} recordingEnabled={generalSettings?.recordingEnabled} recording={recording} onRecord={() => startRecording(generalSettings.recordingMode || "canvas")} onStopRecording={stopRecording} />}
+      {doc && <CanvasChat key={`chat:${doc.path}`} doc={doc} api={api} aiPreview={aiPreview} slidesEnabled={generalSettings?.slidesEnabled} onSlides={() => setSlidesOpen(true)} onReplay={() => setReplayOpen(true)} onSettings={() => { if (!lockedRef.current) setSettingsOpen(true); }} recordingEnabled={generalSettings?.recordingEnabled} recording={recording} onRecord={() => startRecording(generalSettings.recordingMode || "canvas")} onStopRecording={stopRecording} />}
     </section>
     {slidesOpen && <SlidePreview api={api} doc={doc} onClose={() => setSlidesOpen(false)} />}
+    {replayOpen && api && doc && <NarratedReplay key={doc.path} api={api} doc={doc} onClose={() => setReplayOpen(false)} />}
     {notice && <div className={`recording-notice ${notice.error ? "error" : ""}`} role={notice.error ? "alert" : "status"}><span>{notice.text}</span><button type="button" aria-label="Dismiss recording message" onClick={dismissNotice}>×</button></div>}
     {settingsOpen && <SettingsModal generalSettings={generalSettings} onGeneralSettings={setGeneralSettings} recordingActive={recording.phase !== "idle"} onClose={() => setSettingsOpen(false)} />}
   </main>;

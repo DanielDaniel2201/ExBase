@@ -201,3 +201,33 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 .slide-export-status { flex: 0 1 auto; min-width: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #777; font-size: 12px; }
 @media (max-width: 700px) { .slide-preview { grid-template-columns: 140px minmax(0, 1fr); } .slide-preview-heading { flex-wrap: wrap; gap: 8px; } .slide-preview-heading > span { display: none; } .slide-stage { padding: 12px; } }
 @media (max-width: 700px) { .canvas-chat { left: 16px; right: 16px; bottom: 48px; } }
+.narrated-replay { width: min(1160px, calc(100vw - 48px)); max-height: calc(100vh - 64px); box-sizing: border-box; padding: 0; border: 1px solid #ccc; border-radius: 8px; background: #f3f3f5; color: #333; font: 13px/1.4 var(--font-family, sans-serif); overflow: auto; }
+.narrated-replay::backdrop { background: #0005; }
+.narrated-replay button, .narrated-replay select, .narrated-replay input[type="number"] { font: inherit; color: inherit; border: 1px solid #ccc; border-radius: 5px; background: #f7f7f8; padding: 6px 9px; }
+.narrated-replay button { cursor: pointer; }
+.narrated-replay button:hover:not(:disabled), .narrated-replay button:focus-visible { background: #e5e5e7; }
+.narrated-replay button:disabled, .replay-controls:disabled { opacity: .5; }
+.replay-heading { display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-bottom: 1px solid #ddd; }
+.replay-heading > span { flex: 1; color: #777; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.replay-stage { position: relative; aspect-ratio: 16 / 9; width: 100%; max-width: max(200px, calc(177.7778vh - 533.3333px)); margin: 0 auto; background: white; overflow: hidden; }
+.replay-stage > canvas { display: block; width: 100%; height: 100%; }
+.replay-bubble { position: absolute; aspect-ratio: 1; touch-action: none; cursor: move; }
+.replay-bubble > video { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; border-radius: 14%; }
+.replay-bubble.circle > video { border-radius: 50%; }
+.replay-bubble:focus-visible { outline: 2px solid #777; outline-offset: 3px; }
+.narrated-replay .replay-resize { position: absolute; bottom: 0; right: 0; padding: 1px 5px; line-height: 20px; cursor: nwse-resize; touch-action: none; opacity: 0; }
+.replay-bubble:hover .replay-resize, .replay-bubble:focus-within .replay-resize { opacity: 1; }
+.replay-controls { min-width: 0; margin: 0; padding: 12px 14px 0; border: 0; }
+.replay-options, .replay-transport { display: flex; align-items: center; gap: 12px; }
+.replay-options { flex-wrap: wrap; }
+.replay-options label { display: flex; align-items: center; gap: 6px; }
+.replay-options input[type="range"] { width: 90px; }
+.replay-options input[type="number"] { width: 60px; }
+.replay-video-name { flex: 1; min-width: 100px; max-width: 270px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #777; }
+.replay-transport { margin-top: 12px; }
+.replay-transport input { flex: 1; min-width: 30px; }
+.replay-transport > span { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.replay-controls input[type="range"] { accent-color: #777; }
+.replay-caption { min-height: 20px; padding: 8px 14px; color: #777; white-space: pre-line; }
+.replay-footer { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid #ddd; }
+.replay-footer > span { flex: 1; overflow-wrap: anywhere; }

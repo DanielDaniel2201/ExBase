@@ -10,7 +10,7 @@ func TestWailsAppMethods(t *testing.T) {
 	if app.App == nil || app.Workspace == nil || app.Store == nil {
 		t.Fatal("backend services were not initialized")
 	}
-	expected := []string{"AbortRecording", "AppendRecording", "AppendRecordingFrame", "AskAI", "BeginMP4Recording", "BeginRecording", "CancelAI", "CaptureApplicationFrame", "ChooseFolder", "CreateAISession", "CreateDocument", "CreateFolder", "DeleteEntry", "ExportSlides", "FinalizeRecording", "FinishRecording", "LoadAISettings", "LoadGeneralSettings", "LoadPromptTemplates", "OpenDocument", "ReadDirectory", "Rename", "ResolveAICanvas", "Save", "SaveAISettings", "SaveGeneralSettings", "SavePromptTemplates", "StartRecordingMicrophone", "SwitchFolder", "Workspaces"}
+	expected := []string{"AbortRecording", "AppendRecording", "AppendRecordingFrame", "AskAI", "BeginMP4Recording", "BeginPresentationExport", "BeginRecording", "CancelAI", "CaptureApplicationFrame", "ChooseFolder", "ChoosePresentationVideo", "CreateAISession", "CreateDocument", "CreateFolder", "DeleteEntry", "ExportSlides", "FinalizeRecording", "FinishRecording", "LoadAISettings", "LoadGeneralSettings", "LoadPromptTemplates", "OpenDocument", "ReadDirectory", "ReleasePresentationVideo", "Rename", "ResolveAICanvas", "Save", "SaveAISettings", "SaveGeneralSettings", "SavePromptTemplates", "StartRecordingMicrophone", "SwitchFolder", "Workspaces"}
 	typ := reflect.TypeOf(app)
 	actual := make([]string, typ.NumMethod())
 	for i := range actual {

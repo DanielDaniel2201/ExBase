@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { LoadAISettings, SaveAISettings, LoadPromptTemplates, SavePromptTemplates, SaveGeneralSettings } from "../../wailsjs/go/main/App";
+import { srtTemplate } from "./templates";
 
 // Lucide Settings (ISC), kept inline like the existing sidebar icons.
 export function SettingsIcon() {
@@ -155,7 +156,8 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
           }}>+ Add</button></div>
           <p className="template-help">Type / in chat to insert a template. Click a template to edit.</p>
           <div className="template-list" aria-label="Prompt templates">
-            {!templates.length && <p className="template-help">{loaded ? "No templates yet." : "Loading…"}</p>}
+            {loaded && !templates.some((template) => template.name === srtTemplate.name) && <button type="button" className="template-row" disabled={saving} onClick={() => { setError(""); setSelected({ index: templates.length, template: { ...srtTemplate } }); }}><span>{srtTemplate.name}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>}
+            {!templates.length && <p className="template-help">{loaded ? "No custom templates yet." : "Loading…"}</p>}
             {templates.map((template, index) => <button type="button" className="template-row" key={index} disabled={saving} onClick={() => { setError(""); setSelected({ index, template }); }}><span>{template.name}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>)}
           </div>
         </section>

@@ -47,6 +47,10 @@ struct Recorder {
     DWORD video = 0, audio = 0;
     LONGLONG started = 0, frames = 0, audioFrames = 0;
     bool microphone = false;
+    bool offline = false, audioEnded = false;
+    ComPtr<IMFSourceReader> sourceAudio;
+    std::vector<BYTE> pendingAudio;
+    LONGLONG pendingAudioTime = 0;
     std::vector<BYTE> lastFrame;
     std::mutex mutex, startupMutex;
     std::condition_variable startup;
@@ -55,7 +59,27 @@ struct Recorder {
     bool audioReady = false;
     HRESULT audioResult = S_OK;
 
-    Recorder(const wchar_t* path, bool withMicrophone) : microphone(withMicrophone) {
+    Recorder(const wchar_t* path, bool withMicrophone, const wchar_t* source = nullptr) : microphone(withMicrophone), offline(source != nullptr) {
+        if (source) {
+            check(MFCreateSourceReaderFromURL(source, nullptr, &sourceAudio));
+            ComPtr<IMFMediaType> native;
+            auto result = sourceAudio->GetNativeMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, &native);
+            if (result == MF_E_INVALIDSTREAMNUMBER) sourceAudio.Reset();
+            else {
+                check(result);
+                check(sourceAudio->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, FALSE));
+                check(sourceAudio->SetStreamSelection(MF_SOURCE_READER_FIRST_AUDIO_STREAM, TRUE));
+                ComPtr<IMFMediaType> pcm; check(MFCreateMediaType(&pcm));
+                check(pcm->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio));
+                check(pcm->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM));
+                check(pcm->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 1));
+                check(pcm->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, audioRate));
+                check(pcm->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16));
+                check(pcm->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 2));
+                check(pcm->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, audioRate * 2));
+                check(sourceAudio->SetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, nullptr, pcm.Get()));
+            }
+        }
         ComPtr<IMFAttributes> attributes;
         check(MFCreateAttributes(&attributes, 2));
         check(attributes->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, FALSE));
@@ -75,7 +99,7 @@ struct Recorder {
         check(output->CopyAllItems(input.Get()));
         check(input->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12));
         check(writer->SetInputMediaType(video, input.Get(), nullptr));
-        if (microphone) {
+        if (microphone || sourceAudio) {
             output.Reset(); input.Reset();
             check(MFCreateMediaType(&output));
             check(output->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio));
@@ -112,6 +136,35 @@ struct Recorder {
         sample(video, nv12.data(), static_cast<DWORD>(nv12.size()), frames * frameDuration, frameDuration);
         ++frames;
     }
+    // File audio and video use frame timestamps, independent of rendering speed.
+    void audioUntil(LONGLONG limit) {
+        if (!sourceAudio) return;
+        while (true) {
+            if (pendingAudio.empty()) {
+                if (audioEnded) return;
+                ComPtr<IMFSample> decoded; DWORD flags = 0;
+                check(sourceAudio->ReadSample(MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, nullptr, &flags, &pendingAudioTime, &decoded));
+                if (flags & MF_SOURCE_READERF_ENDOFSTREAM) audioEnded = true;
+                if (!decoded) continue;
+                if (flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED) check(MF_E_INVALIDMEDIATYPE);
+                ComPtr<IMFMediaBuffer> buffer; check(decoded->ConvertToContiguousBuffer(&buffer));
+                BYTE* data; DWORD length; check(buffer->Lock(&data, nullptr, &length));
+                pendingAudio.assign(data, data + length); check(buffer->Unlock());
+                if (pendingAudioTime < 0) {
+                    auto skip = std::min<size_t>(pendingAudio.size() / 2, static_cast<size_t>((-pendingAudioTime * audioRate + 9999999) / 10000000));
+                    pendingAudio.erase(pendingAudio.begin(), pendingAudio.begin() + skip * 2);
+                    pendingAudioTime += skip * 10000000LL / audioRate;
+                }
+            }
+            if (pendingAudioTime >= limit) return;
+            auto count = std::min<size_t>(pendingAudio.size() / 2, static_cast<size_t>((limit - pendingAudioTime) * audioRate / 10000000));
+            if (!count) return;
+            auto duration = count * 10000000LL / audioRate;
+            sample(audio, pendingAudio.data(), static_cast<DWORD>(count * 2), pendingAudioTime, duration);
+            pendingAudio.erase(pendingAudio.begin(), pendingAudio.begin() + count * 2);
+            pendingAudioTime += duration;
+        }
+    }
     void frame(const BYTE* png, UINT size) {
         ComPtr<IWICStream> stream; ComPtr<IWICBitmapDecoder> decoder;
         ComPtr<IWICBitmapFrameDecode> bitmap; ComPtr<IWICFormatConverter> converter;
@@ -141,9 +194,10 @@ struct Recorder {
         }
         std::lock_guard<std::mutex> lock(mutex);
         if (!started) started = now();
-        auto target = (now() - started) / frameDuration;
+        auto target = offline ? frames : (now() - started) / frameDuration;
         while (frames < target && !lastFrame.empty()) videoFrame(lastFrame);
         videoFrame(nv12); lastFrame = std::move(nv12);
+        if (offline) audioUntil(frames * frameDuration);
     }
     void startMicrophone() {
         if (!microphone || audioThread.joinable()) check(E_INVALIDARG);
@@ -194,7 +248,7 @@ struct Recorder {
         stopAudio = true;
         if (audioThread.joinable()) audioThread.join();
         std::lock_guard<std::mutex> lock(mutex);
-        if (started) { auto target = (now() - started) / frameDuration + 1; while (frames < target) videoFrame(lastFrame); }
+        if (started && !offline) { auto target = (now() - started) / frameDuration + 1; while (frames < target) videoFrame(lastFrame); }
         auto result = writer->Finalize(); writer.Reset();
         if (frames) check(result);
         check(audioResult);
@@ -283,6 +337,7 @@ template<typename Action> static HRESULT guarded(Action action) {
 EXPORT const wchar_t* RecordingError() { return lastError.c_str(); }
 EXPORT HRESULT RecordingInitialize() { return guarded([] { check(RoInitialize(RO_INIT_MULTITHREADED)); check(MFStartup(MF_VERSION)); check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&imaging))); }); }
 EXPORT HRESULT RecordingBegin(const wchar_t* path, BOOL microphone) { return guarded([&] { if (recording) check(E_UNEXPECTED); recording = std::make_unique<Recorder>(path, microphone != FALSE); }); }
+EXPORT HRESULT RecordingBeginPresentation(const wchar_t* path, const wchar_t* source) { return guarded([&] { if (recording) check(E_UNEXPECTED); recording = std::make_unique<Recorder>(path, false, source); }); }
 EXPORT HRESULT RecordingFrame(const BYTE* data, UINT size) { return guarded([&] { if (!recording) check(E_UNEXPECTED); recording->frame(data, size); }); }
 EXPORT HRESULT RecordingMicrophone() { return guarded([] { if (!recording) check(E_UNEXPECTED); recording->startMicrophone(); }); }
 EXPORT HRESULT RecordingFinish() { return guarded([] { auto current = std::move(recording); windowCapture.reset(); if (current) current->finish(); }); }

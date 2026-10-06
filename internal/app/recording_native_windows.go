@@ -81,6 +81,7 @@ func recordingNativeCall(action func() error) error {
 }
 
 // Keep pointers converted to uintptr alive and off movable Go stacks until the call returns.
+//
 //go:uintptrescapes
 func recordingNativeInvoke(name string, args ...uintptr) error {
 	procedure, err := nativeRecorder.library.FindProc(name)
@@ -113,6 +114,19 @@ func nativeRecordingBegin(path string, microphone bool) error {
 func nativeRecordingFrame(data []byte) error {
 	return recordingNativeCall(func() error {
 		return recordingNativeInvoke("RecordingFrame", uintptr(unsafe.Pointer(&data[0])), uintptr(len(data)))
+	})
+}
+func nativePresentationBegin(path, source string) error {
+	return recordingNativeCall(func() error {
+		output, err := windows.UTF16PtrFromString(path)
+		if err != nil {
+			return err
+		}
+		video, err := windows.UTF16PtrFromString(source)
+		if err != nil {
+			return err
+		}
+		return recordingNativeInvoke("RecordingBeginPresentation", uintptr(unsafe.Pointer(output)), uintptr(unsafe.Pointer(video)))
 	})
 }
 func nativeRecordingMicrophone() error {

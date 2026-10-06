@@ -42,6 +42,11 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Native recording check compilation failed.' }
         & "$nativeBuildPath\recording-check.exe" fixture "$nativeBuildPath\tone.mp4"
         if ($LASTEXITCODE -ne 0) { throw 'Native MP4 audio/video integration check failed.' }
+        $presentationCheck = & "$nativeBuildPath\recording-check.exe" presentation "$nativeBuildPath\presentation.mp4" "$nativeBuildPath\tone.mp4"
+        if ($LASTEXITCODE -ne 0) { throw 'Native narrated replay export check failed.' }
+        $presentationResult = $presentationCheck | ConvertFrom-Json
+        if ($presentationResult.frames -ne 40 -or $presentationResult.audioPeak -lt 1000 -or $presentationResult.audioSamples -lt 94000 -or $presentationResult.audioSamples -gt 98000) { throw 'Narrated export changed frame duration or lost the original audio.' }
+        $presentationCheck
     }
 } finally {
     if ($lockHeld) { $buildLock.ReleaseMutex() }
