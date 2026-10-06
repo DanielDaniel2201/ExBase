@@ -12,9 +12,9 @@ const destination = path.join(artifacts, 'narrated-replay-check.mp4');
 
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
-  let encoder, done;
+  let encoder, done, page;
   try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     const errors = []; page.on('pageerror', (error) => { errors.push(error.message); console.error('Browser error:', error.message); });
     await page.exposeFunction('checkBeginExport', () => {
       encoder = spawn(native, ['encode-presentation', destination, source]);
@@ -46,18 +46,30 @@ const destination = path.join(artifacts, 'narrated-replay-check.mp4');
       const doc = { path: 'D:\\check\\Synthetic.excalidraw', data: JSON.stringify({ type: 'excalidraw', version: 2, elements, files: {}, appState: { viewBackgroundColor: '#ffffff' } }) };
       window.go = { main: { App: {
         Workspaces: async () => ({ current: 'D:\\check', folders: ['D:\\check'] }), ReadDirectory: async () => [{ path: doc.path, name: 'Synthetic.excalidraw', isDir: false }], OpenDocument: async () => doc,
-        LoadGeneralSettings: async () => ({ slidesEnabled: false, recordingEnabled: false }), LoadPromptTemplates: async () => [{ name: "SRT · 叙述回放", body: "SRT 文件：{{SRT 文件路径}}" }], LoadAISettings: async () => ({ hasAPIKey: false }),
-        Save: async () => { window.check.saves++; }, ChoosePresentationVideo: async () => ({ token: 'check', name: 'Synthetic.mp4', url: '/presentation-media/check' }), ReleasePresentationVideo: async () => { window.check.releases++; },
+        LoadGeneralSettings: async () => ({ slidesEnabled: false, recordingEnabled: false }), LoadPromptTemplates: async () => [{ name: "SRT · Narrated replay", body: "SRT file: {{SRT file path}}\nVisual description: {{Optional visual description}}" }], LoadAISettings: async () => ({ hasAPIKey: true }),
+        Save: async (path, data) => { window.check.saves++; window.check.savedScene = JSON.parse(data); }, ReleasePresentationVideo: async () => { window.check.releases++; },
+        ChoosePresentationAssets: async (document, kind) => ({ ...(kind !== 'video' && { srtPath: 'Synthetic.srt' }), ...(kind !== 'srt' && { video: { token: 'check', name: 'Synthetic.mp4', path: 'Synthetic.mp4', url: '/presentation-media/check' } }) }),
+        OpenPresentationAssets: async (document, paths) => {
+          window.check.opens = (window.check.opens || 0) + 1;
+          if (window.check.missingVideo) throw Error('file not found');
+          return { ...(paths.some(p => p.endsWith('.srt')) && { srtPath: 'Synthetic.srt' }), ...(paths.some(p => p.endsWith('.mp4')) && { video: { token: 'check', name: 'Synthetic.mp4', path: 'Synthetic.mp4', url: '/presentation-media/check' } }) };
+        },
+        CreateAISession: async () => 'check-session', CancelAI: async () => { window.check.rejectGeneration?.(Error('Generation cancelled.')); },
+        AskAI: async (document, scene, checkpoint, prompt) => {
+          window.check.generationPrompt = prompt;
+          if (window.check.deferGeneration) await new Promise((resolve, reject) => { window.check.rejectGeneration = reject; });
+          return { reply: 'Ready', checkpointId: 'check-checkpoint', elements: JSON.parse(scene).elements.length ? JSON.parse(scene).elements.map(e => ({ ...e, customData: { ...e.customData, ...(e.id === 'red' && { exbasePresentation: { ...timeline, srtPath: 'Synthetic.srt' } }) } })) : elements };
+        },
         BeginPresentationExport: async () => { window.check.exports++; window.check.frames = 0; return window.checkBeginExport(); }, AppendRecordingFrame: async (id, frame) => { await window.checkAppend(frame); window.check.frames++; }, FinishRecording: async () => window.checkFinish(), AbortRecording: async () => window.checkAbort(),
       } } };
-      window.runtime = { EventsOnMultiple: (name, fn) => { window.check.listeners.set(name, fn); return () => window.check.listeners.delete(name); }, WindowMinimise: () => {}, WindowToggleMaximise: () => {} };
+      window.runtime = { EventsOnMultiple: (name, fn) => { window.check.listeners.set(name, fn); return () => window.check.listeners.delete(name); }, OnFileDrop: (fn) => { window.check.drop = fn; }, OnFileDropOff: () => { window.check.drop = null; }, WindowMinimise: () => {}, WindowToggleMaximise: () => {} };
     });
     await page.goto(process.env.EXBASE_CHECK_URL || 'http://localhost:5173');
     await page.getByRole('button', { name: 'Synthetic.excalidraw' }).click();
     await page.waitForFunction(() => !!window.check.api);
     const composer = page.getByRole('textbox', { name: 'Message DeepSeek' });
-    await composer.fill('/SRT'); await page.getByRole('option', { name: 'SRT · 叙述回放' }).click();
-    assert.ok((await composer.inputValue()).includes('SRT 文件：{{SRT 文件路径}}'));
+    await composer.fill('/SRT'); await page.getByRole('option', { name: 'SRT · Narrated replay' }).click();
+    assert.ok((await composer.inputValue()).includes('SRT file: {{SRT file path}}'));
     await composer.fill('');
     const original = await page.evaluate(() => JSON.stringify(window.check.api.getSceneElements().map(e => ({ id: e.id, x: e.x, y: e.y }))));
     await page.getByRole('button', { name: 'Add-ons', exact: true }).click();
@@ -112,7 +124,56 @@ const destination = path.join(artifacts, 'narrated-replay-check.mp4');
     assert.equal(await page.evaluate(() => JSON.stringify(window.check.api.getSceneElements().map(e => ({ id: e.id, x: e.x, y: e.y })))), original);
     assert.equal(await page.evaluate(() => window.check.api.getSceneElements()[0].customData.exbasePresentation.bubble.shape), 'circle');
     assert.equal(await page.evaluate(() => window.check.releases), 1);
+
+    // Reopening restores the saved video; replacing SRT blocks the previous timeline.
+    await page.getByRole('button', { name: 'Add-ons', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Narrated replay' }).click();
+    await page.waitForFunction(() => document.querySelector('.replay-bubble video').readyState >= 2);
+    assert.ok(await page.evaluate(() => window.check.opens >= 1));
+    await page.getByRole('button', { name: 'Change SRT' }).click();
+    await page.getByRole('button', { name: 'Regenerate replay' }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Export MP4' }).count(), 0);
+    assert.equal(await page.evaluate(() => window.check.api.getSceneElements()[0].customData.exbasePresentation.needsGeneration), true);
+    await page.getByRole('textbox', { name: 'Visual description' }).fill('Two blue nodes with a clear connection.');
+    await page.evaluate(() => { window.check.deferGeneration = true; });
+    await page.getByRole('button', { name: 'Regenerate replay' }).click();
+    await page.waitForFunction(() => !!window.check.rejectGeneration);
+    await page.getByRole('button', { name: 'Cancel generation' }).click();
+    await page.getByRole('button', { name: 'Regenerate replay' }).waitFor();
+    await page.evaluate(() => { window.check.deferGeneration = false; });
+    await page.getByRole('button', { name: 'Regenerate replay' }).click();
+    await page.getByRole('button', { name: 'Export MP4' }).waitFor();
+    assert.ok(await page.evaluate(() => window.check.generationPrompt.includes('Two blue nodes') && !window.check.generationPrompt.includes('set_presentation_timeline')));
+    await page.getByRole('button', { name: 'Back to canvas' }).click();
+    await page.waitForFunction(() => window.check.savedScene?.elements[0]?.customData?.exbasePresentation?.visualDescription === 'Two blue nodes with a clear connection.');
+
+    // Missing linked video offers relocation without losing the drawing.
+    await page.evaluate(() => { window.check.missingVideo = true; });
+    await page.getByRole('button', { name: 'Add-ons', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Narrated replay' }).click();
+    await page.getByRole('button', { name: 'Locate video' }).waitFor();
+    await page.getByRole('button', { name: 'Locate video' }).click();
+    await page.waitForFunction(() => document.querySelector('.replay-bubble video').readyState >= 2);
+    await page.getByRole('button', { name: 'Back to canvas' }).click();
+    await page.evaluate(() => { window.check.missingVideo = false; window.check.api.updateScene({ elements: [] }); });
+
+    // The same menu starts a new replay on a blank canvas. Both files can be dropped together.
+    await page.getByRole('button', { name: 'Add-ons', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Narrated replay' }).click();
+    assert.ok(await page.getByRole('button', { name: 'Generate replay' }).isDisabled());
+    await page.evaluate(() => { const bounds = document.querySelector('.replay-assets').getBoundingClientRect(); window.check.drop(bounds.left + 20, bounds.top + 20, ['Synthetic.mp4', 'Synthetic.srt']); });
+    await page.waitForFunction(() => document.querySelector('.replay-bubble video').readyState >= 2);
+    await page.getByRole('textbox', { name: 'Visual description' }).fill('A compact diagram with two nodes.');
+    await page.screenshot({ path: path.join(artifacts, 'narrated-replay-setup.png') });
+    await page.getByRole('button', { name: 'Generate replay' }).click();
+    await page.getByRole('button', { name: 'Export MP4' }).waitFor();
+    const linked = await page.evaluate(() => window.check.api.getSceneElements()[0].customData.exbasePresentation);
+    assert.equal(linked.srtPath, 'Synthetic.srt'); assert.equal(linked.videoPath, 'Synthetic.mp4'); assert.equal(linked.needsGeneration, false);
+    await page.getByRole('button', { name: 'Back to canvas' }).click();
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ status: 'passed', source: 'synthetic only', ...result }));
+  } catch (error) {
+    if (page) { await page.screenshot({ path: path.join(artifacts, 'narrated-replay-failure.png') }); console.error(await page.locator('dialog.narrated-replay').evaluateAll((dialogs) => dialogs.map(d => ({ open: d.open, scrollTop: d.scrollTop, text: d.textContent, buttons: [...d.querySelectorAll('button')].map(b => ({ text: b.textContent, disabled: b.disabled, hidden: b.hidden })) })))); }
+    throw error;
   } finally { if (encoder && encoder.exitCode === null) encoder.kill(); await browser.close(); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

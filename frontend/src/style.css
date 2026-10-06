@@ -204,13 +204,27 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 @media (max-width: 700px) { .canvas-chat { left: 16px; right: 16px; bottom: 48px; } }
 .narrated-replay { width: min(1160px, calc(100vw - 48px)); max-height: calc(100vh - 64px); box-sizing: border-box; padding: 0; border: 1px solid #ccc; border-radius: 8px; background: #f3f3f5; color: #333; font: 13px/1.4 var(--font-family, sans-serif); overflow: auto; }
 .narrated-replay::backdrop { background: #0005; }
+.narrated-replay [hidden] { display: none !important; }
+.narrated-replay.replay-setup { width: min(650px, calc(100vw - 48px)); }
+.replay-assets { min-width: 0; border: 0; border-bottom: 1px solid #ddd; padding: 12px 14px; margin: 0; display: grid; gap: 10px; --wails-drop-target: drop; }
+.replay-file-row { display: flex; align-items: center; gap: 12px; }
+.replay-file-row > strong { flex: 0 0 100px; font-weight: 500; }
+.replay-file-row > span { flex: 1; min-width: 0; overflow-wrap: anywhere; color: #777; }
+.replay-file-row small { display: block; }
+.replay-file-row > button { flex: 0 0 105px; }
+.replay-drop-zone { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; padding: 16px 10px; border: 1px dashed #bbb; border-radius: 5px; color: #777; }
+.replay-description { display: block; margin-top: 2px; }
+.replay-description > span { color: #777; margin-left: 6px; font-size: 12px; }
+.replay-description textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; min-height: 76px; max-height: 180px; margin-top: 6px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 5px; background: #fafafa; color: #333; font: inherit; }
+.replay-asset-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #777; }
+.replay-note { margin: 0; color: #777; }
 .narrated-replay button, .narrated-replay select, .narrated-replay input[type="number"] { font: inherit; color: inherit; border: 1px solid #ccc; border-radius: 5px; background: #f7f7f8; padding: 6px 9px; }
 .narrated-replay button { cursor: pointer; }
 .narrated-replay button:hover:not(:disabled), .narrated-replay button:focus-visible { background: #e5e5e7; }
 .narrated-replay button:disabled, .replay-controls:disabled { opacity: .5; }
-.replay-heading { display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-bottom: 1px solid #ddd; }
+.replay-heading { position: sticky; top: 0; z-index: 2; background: #f3f3f5; display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-bottom: 1px solid #ddd; }
 .replay-heading > span { flex: 1; color: #777; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.replay-stage { position: relative; aspect-ratio: 16 / 9; width: 100%; max-width: max(200px, calc(177.7778vh - 533.3333px)); margin: 0 auto; background: white; overflow: hidden; }
+.replay-stage { position: relative; aspect-ratio: 16 / 9; width: 100%; max-width: max(200px, calc(177.7778vh - 746.6667px)); margin: 0 auto; background: white; overflow: hidden; }
 .replay-stage > canvas { display: block; width: 100%; height: 100%; }
 .replay-bubble { position: absolute; aspect-ratio: 1; touch-action: none; cursor: move; }
 .replay-bubble > video { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; border-radius: 14%; }

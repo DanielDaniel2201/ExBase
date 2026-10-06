@@ -43,6 +43,9 @@ func TestSRTAgentToolsSaveTimelineAndRestrictFileReads(t *testing.T) {
 		}
 		if r.URL.Path == "/chat" {
 			messages := body["messages"].([]any)
+			if round == 0 && messages[1].(map[string]any)["content"] != narrationInstructions {
+				t.Error("narration workflow missing from host instructions")
+			}
 			last := messages[len(messages)-1].(map[string]any)["content"].(string)
 			if round == 1 && !strings.Contains(last, "only the SRT path explicitly") {
 				t.Error("model could read a path not authorized by the prompt", last)
@@ -144,8 +147,74 @@ func TestSRTAgentToolsSaveTimelineAndRestrictFileReads(t *testing.T) {
 	}
 	custom := final[0]["customData"].(map[string]any)
 	metadata := custom["exbasePresentation"].(map[string]any)
-	if custom["keep"] != true || metadata["srtPath"] != srt || metadata["steps"].([]any)[0].(map[string]any)["atMs"] != float64(500) {
+	if custom["keep"] != true || metadata["srtPath"] != "talk.srt" || metadata["steps"].([]any)[0].(map[string]any)["atMs"] != float64(500) {
 		t.Fatal("association or existing metadata lost", custom)
+	}
+	// A plain model reply must never count as successful regeneration of an old plan.
+	scene, _ = json.Marshal(map[string]any{"elements": final})
+	if _, err := a.AskAI(document, string(scene), "", "SRT file: "+srt, "", nil, session, "second-request", "none"); err == nil || !strings.Contains(err.Error(), "no valid narration timeline") {
+		t.Fatal("generation without a new validated timeline was accepted", err)
+	}
+}
+
+func TestPresentationAssetPathsRestoreAndMove(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"original", "moved"} {
+		folder := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Join(folder, "media"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(folder, "media", "talk.srt"), []byte("1\n00:00:00,500 --> 00:00:02,000\nA node\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(folder, "media", "talk.mp4"), []byte("0123456789"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := NewApp()
+	a.Workspace = workspace.New(root)
+	document := filepath.Join(root, "original", "diagram.excalidraw")
+	assets, err := a.OpenPresentationAssets(document, []string{filepath.Join(root, "original", "media", "talk.mp4"), "media/talk.srt"})
+	if err != nil || assets.SRTPath != "media/talk.srt" || assets.Video == nil || assets.Video.Path != "media/talk.mp4" {
+		t.Fatal(assets, err)
+	}
+	a.ReleasePresentationVideo(assets.Video.Token)
+	restored, err := a.OpenPresentationAssets(filepath.Join(root, "moved", "diagram.excalidraw"), []string{assets.Video.Path})
+	if err != nil || restored.Video == nil {
+		t.Fatal(restored, err)
+	}
+	w := httptest.NewRecorder()
+	PresentationMediaHandler(a).ServeHTTP(w, httptest.NewRequest(http.MethodGet, restored.Video.URL, nil))
+	if w.Code != 200 || w.Body.String() != "0123456789" {
+		t.Fatal("moved video could not be served", w.Code, w.Body.String())
+	}
+	a.ReleasePresentationVideo(restored.Video.Token)
+	external := filepath.Join(root, "moved", "media", "talk.mp4")
+	if storedPresentationPath(document, external) != external {
+		t.Fatal("external media path must stay absolute")
+	}
+	for _, paths := range [][]string{nil, {"media/missing.mp4"}, {"media/talk.mp4", "media/talk.mp4"}, {"media/talk.srt", "media/talk.srt"}, {"media/talk.mp4", "secret.txt"}, {"media/talk.mp4", "media/talk.srt", "third.srt"}} {
+		if _, err := a.OpenPresentationAssets(document, paths); err == nil {
+			t.Fatal("invalid assets accepted", paths)
+		}
+	}
+	if len(a.presentationMedia) != 0 {
+		t.Fatal("failed selection leaked a media token")
+	}
+	if _, err := a.OpenPresentationAssets(filepath.Join(root, "..", "outside.excalidraw"), []string{external}); err == nil {
+		t.Fatal("document outside workspace accepted")
+	}
+}
+
+func TestNarrationRegenerationKeepsUnrelatedElements(t *testing.T) {
+	plan := PresentationTimeline{Version: 1, Steps: []RevealStep{{CueID: 1, ElementIDs: []string{"node", "label"}}}}
+	elements := []map[string]any{
+		{"id": "baseline", "customData": map[string]any{"exbasePresentation": plan, "keep": true}},
+		{"id": "node"}, {"id": "label", "containerId": "node"}, {"id": "unrelated"},
+	}
+	base := narrationBaseElements(elements)
+	if len(base) != 2 || base[0]["id"] != "baseline" || base[1]["id"] != "unrelated" || len(elements) != 4 {
+		t.Fatal("regeneration changed unrelated elements or mutated original scene", base, elements)
 	}
 }
 

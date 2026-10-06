@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clampBubble, presentationFromElements, revealIndex, revealedElements, validatePresentation } from "./presentation.js";
+import { clampBubble, presentationFromElements, revealIndex, revealedElements, updatePresentationElements, validatePresentation } from "./presentation.js";
 
 test("narration replay reconstructs seeks, offsets and bound label visibility without mutating the scene", () => {
   const elements = [{ id: "existing" }, { id: "node", boundElements: [{ id: "text" }, { id: "arrow" }] }, { id: "text", containerId: "node" }, { id: "arrow" }];
@@ -18,6 +18,20 @@ test("narration replay reconstructs seeks, offsets and bound label visibility wi
   assert.equal(revealIndex(plan, 0), 0);
   assert.throws(() => validatePresentation(plan, elements.slice(0, 3)), /missing/);
   assert.equal(presentationFromElements([{ ...elements[0], isDeleted: true }]), null);
+});
+
+test("linked narration assets survive serialization and changed subtitles block stale playback", () => {
+  const plan = { version: 1, srtPath: "talk.srt", videoPath: "media/talk.mp4", cues: [{ id: 1, startMs: 0, endMs: 1000, text: "node" }], baseIds: [], steps: [{ cueId: 1, atMs: 0, elementIds: ["node"] }] };
+  const elements = [{ id: "node", version: 1, customData: { keep: true, exbasePresentation: plan } }];
+  const next = updatePresentationElements(elements, { srtPath: "new.srt", needsGeneration: true, visualDescription: "Two blue nodes" });
+  assert.equal(elements[0].customData.exbasePresentation.srtPath, "talk.srt");
+  assert.equal(next[0].customData.keep, true);
+  const restored = JSON.parse(JSON.stringify(next));
+  assert.equal(presentationFromElements(restored).videoPath, "media/talk.mp4");
+  assert.throws(() => validatePresentation(presentationFromElements(restored), restored), /Subtitles changed/);
+  const ready = updatePresentationElements(restored, { needsGeneration: false });
+  assert.equal(validatePresentation(presentationFromElements(ready), ready).visualDescription, "Two blue nodes");
+  assert.equal(updatePresentationElements(ready, { needsGeneration: false })[0], ready[0]);
 });
 
 test("face bubbles stay square and within the 16:9 stage while resizing", () => {

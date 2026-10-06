@@ -14,6 +14,20 @@ type PromptTemplate struct {
 	Body string `json:"body"`
 }
 
+const narrationTemplateBody = `Create an editable diagram illustrating this narration.
+SRT file: {{SRT file path}}
+
+Visual description: {{Optional visual description}}`
+
+// Match only the former bundled body, including its earlier progressive wording.
+// User-authored content and custom names are preserved.
+const legacyNarrationTemplateBody = `请读取下方 SRT 文件，根据完整讲解内容，用 MCP 在当前画布的空白区域生成一张可编辑的 Excalidraw 示意图。
+SRT 文件：{{SRT 文件路径}}
+
+把字幕当作讲解素材，按语义组织节点、文字和连接，不必每条字幕都新增元素。整张图使用紧凑清晰的 16:9 布局，保持当前画布的样式，保留已有内容。
+完成全部绘图后，读取实际元素 ID，把新增元素按讲解顺序关联到对应字幕的出场组，并保存叙述回放时间表。形状和绑定文字同时出现，箭头在端点出现后再出现。
+绘图要求：{{可选绘图要求}}`
+
 func promptTemplatesFile() (string, error) {
 	home, err := os.UserHomeDir()
 	return filepath.Join(home, ".exbase", "prompt-templates.json"), err
@@ -38,12 +52,7 @@ func (a *Store) LoadPromptTemplates() ([]PromptTemplate, error) {
 布局：每页使用 1600 × 900 的 16:9 Frame，按从左到右的顺序排列，页面之间保留间距。所有页面内容都放在对应 Frame 内，Frame 使用清晰的页码与标题命名。
 文本：使用中文；标题 48 px，正文 28 px，注释 20 px；每页一个核心观点，正文最多 5 条短句，保持一致的字体和层级。
 色彩：白色背景，深灰 #202124 正文，蓝色 #2563eb 强调，浅灰 #f3f4f6 辅助区域；全套演示保持一致。
-风格：简洁、专业、留白充足。优先使用图示、流程或对比来解释内容，避免文字堆叠。已有画布内容应保留，新页面放在空白区域。`}, {Name: "SRT · 叙述回放", Body: `请读取下方 SRT 文件，根据完整讲解内容，用 MCP 在当前画布的空白区域生成一张可编辑的 Excalidraw 示意图。
-SRT 文件：{{SRT 文件路径}}
-
-把字幕当作讲解素材，按语义组织节点、文字和连接，不必每条字幕都新增元素。整张图使用紧凑清晰的 16:9 布局，保持当前画布的样式，保留已有内容。
-完成全部绘图后，读取实际元素 ID，把新增元素按讲解顺序关联到对应字幕的出场组，并保存叙述回放时间表。形状和绑定文字同时出现，箭头在端点出现后再出现。使用现有 progressive 出场方式，不需要模拟笔迹。
-绘图要求：{{可选绘图要求}}`}}, nil
+风格：简洁、专业、留白充足。优先使用图示、流程或对比来解释内容，避免文字堆叠。已有画布内容应保留，新页面放在空白区域。`}, {Name: "SRT · Narrated replay", Body: narrationTemplateBody}}, nil
 	}
 	if err != nil {
 		return nil, err
@@ -54,6 +63,16 @@ SRT 文件：{{SRT 文件路径}}
 	}
 	if templates == nil {
 		templates = []PromptTemplate{}
+	}
+	for i := range templates {
+		body := strings.ReplaceAll(templates[i].Body, "\r\n", "\n")
+		body = strings.ReplaceAll(body, "使用现有 progressive 出场方式，不需要模拟笔迹。", "")
+		if body == legacyNarrationTemplateBody {
+			templates[i].Body = narrationTemplateBody
+			if templates[i].Name == "SRT · 叙述回放" {
+				templates[i].Name = "SRT · Narrated replay"
+			}
+		}
 	}
 	return templates, nil
 }

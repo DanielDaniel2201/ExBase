@@ -2,7 +2,18 @@ export function presentationFromElements(elements) {
   return elements.find((element) => !element.isDeleted && element.customData?.exbasePresentation)?.customData.exbasePresentation || null;
 }
 
+export function updatePresentationElements(elements, changes) {
+  return elements.map((element) => {
+    const metadata = element.customData?.exbasePresentation;
+    if (!metadata || element.isDeleted) return element;
+    const next = { ...metadata, ...changes };
+    if (JSON.stringify(next) === JSON.stringify(metadata)) return element;
+    return { ...element, customData: { ...element.customData, exbasePresentation: next }, version: element.version + 1, versionNonce: Math.floor(Math.random() * 2147483647), updated: Date.now() };
+  });
+}
+
 export function validatePresentation(plan, elements) {
+  if (plan?.needsGeneration) throw Error("Subtitles changed. Generate the narrated replay again.");
   if (plan?.version !== 1 || !plan.srtPath || !Array.isArray(plan.cues) || !plan.cues.length || !Array.isArray(plan.steps) || !plan.steps.length || !Array.isArray(plan.baseIds)) throw Error("This canvas has an invalid narration timeline. Generate it again from SRT.");
   const ids = new Set(elements.filter((e) => !e.isDeleted).map((e) => e.id));
   for (const cue of plan.cues) if (!Number.isInteger(cue.id) || !Number.isFinite(cue.startMs) || !Number.isFinite(cue.endMs) || cue.startMs < 0 || cue.endMs <= cue.startMs || typeof cue.text !== "string") throw Error("This canvas has invalid subtitles. Generate the timeline again.");

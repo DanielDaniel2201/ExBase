@@ -18,10 +18,11 @@ func main() {
 	app := NewApp()
 	media := backend.PresentationMediaHandler(app.App)
 	if err := wails.Run(&options.App{
-		Title:     "ExBase",
-		Width:     1100,
-		Height:    700,
-		Frameless: true,
+		Title:       "ExBase",
+		Width:       1100,
+		Height:      700,
+		Frameless:   true,
+		DragAndDrop: &options.DragAndDrop{EnableFileDrop: true},
 		AssetServer: &assetserver.Options{Assets: assets, Handler: media, Middleware: func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if strings.HasPrefix(r.URL.Path, "/presentation-media/") {

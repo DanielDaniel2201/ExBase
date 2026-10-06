@@ -44,6 +44,7 @@ export default function App() {
   const autosaveTimer = useRef();
   const lastSaved = useRef("");
   const aiPreview = useRef(null);
+  const chat = useRef(null);
   const { recording, start: startRecording, stop: stopRecording, locked, notice, dismissNotice } = useRecording(api, doc, setStatus);
   const lockedRef = useRef(locked);
   lockedRef.current = locked;
@@ -370,10 +371,10 @@ export default function App() {
       {doc
         ? <Excalidraw key={`canvas:${doc.path}`} initialData={{ ...doc.scene, scrollToContent: true }} viewModeEnabled={slidesOpen} excalidrawAPI={setApi} onChange={autosave} />
         : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an <PencilRulerIcon /> Excalidraw file from the sidebar.<br />Or double-click to create a new one.</p></div>}
-      {doc && <CanvasChat key={`chat:${doc.path}`} doc={doc} api={api} aiPreview={aiPreview} slidesEnabled={generalSettings?.slidesEnabled} onSlides={() => setSlidesOpen(true)} onReplay={() => setReplayOpen(true)} onSettings={() => { if (!lockedRef.current) setSettingsOpen(true); }} recordingEnabled={generalSettings?.recordingEnabled} recording={recording} onRecord={() => startRecording(generalSettings.recordingMode || "canvas")} onStopRecording={stopRecording} />}
+      {doc && <CanvasChat ref={chat} key={`chat:${doc.path}`} doc={doc} api={api} aiPreview={aiPreview} slidesEnabled={generalSettings?.slidesEnabled} onSlides={() => setSlidesOpen(true)} onReplay={() => setReplayOpen(true)} onSettings={() => { if (!lockedRef.current) setSettingsOpen(true); }} recordingEnabled={generalSettings?.recordingEnabled} recording={recording} onRecord={() => startRecording(generalSettings.recordingMode || "canvas")} onStopRecording={stopRecording} />}
     </section>
     {slidesOpen && <SlidePreview api={api} doc={doc} onClose={() => setSlidesOpen(false)} />}
-    {replayOpen && api && doc && <NarratedReplay key={doc.path} api={api} doc={doc} onClose={() => setReplayOpen(false)} />}
+    {replayOpen && api && doc && <NarratedReplay key={doc.path} api={api} doc={doc} onGenerate={(text) => chat.current.generate(text)} onCancel={() => chat.current?.cancel()} onClose={() => setReplayOpen(false)} />}
     {notice && <div className={`recording-notice ${notice.error ? "error" : ""}`} role={notice.error ? "alert" : "status"}><span>{notice.text}</span><button type="button" aria-label="Dismiss recording message" onClick={dismissNotice}>×</button></div>}
     {settingsOpen && <SettingsModal generalSettings={generalSettings} onGeneralSettings={setGeneralSettings} recordingActive={recording.phase !== "idle"} onClose={() => setSettingsOpen(false)} />}
   </main>;

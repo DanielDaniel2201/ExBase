@@ -16,7 +16,7 @@ func TestPromptTemplates(t *testing.T) {
 	if err != nil || len(defaults) != 2 {
 		t.Fatal(defaults, err)
 	}
-	if defaults[1].Name != "SRT · 叙述回放" || !strings.Contains(defaults[1].Body, "SRT 文件：{{SRT 文件路径}}") {
+	if defaults[1].Name != "SRT · Narrated replay" || !strings.Contains(defaults[1].Body, "SRT file: {{SRT file path}}") || strings.Contains(defaults[1].Body, "timeline") {
 		t.Fatal("missing SRT preset", defaults)
 	}
 	defaults[1].Name = "My replay"
@@ -66,5 +66,21 @@ func TestPromptTemplates(t *testing.T) {
 	}
 	if _, err := app.LoadPromptTemplates(); err == nil {
 		t.Fatal("corrupt file silently replaced by defaults")
+	}
+}
+
+func TestLegacyNarrationTemplateMigrationPreservesUserEdits(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+	store := &Store{}
+	legacy := strings.Replace(legacyNarrationTemplateBody, "\n绘图要求", "使用现有 progressive 出场方式，不需要模拟笔迹。\n绘图要求", 1)
+	templates := []PromptTemplate{{Name: "SRT Narrative Replay", Body: legacy}, {Name: "My narration", Body: legacyNarrationTemplateBody + "\nUse green shapes."}}
+	if err := store.SavePromptTemplates(templates); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadPromptTemplates()
+	if err != nil || loaded[0].Name != templates[0].Name || loaded[0].Body != narrationTemplateBody || loaded[1] != templates[1] {
+		t.Fatal("legacy workflow was not simplified or user edits were changed", loaded, err)
 	}
 }

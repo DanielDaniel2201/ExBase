@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { CaptureUpdateAction, convertToExcalidrawElements, exportToBlob, hashString, restore, serializeAsJSON } from "@excalidraw/excalidraw";
 import { AskAI, CancelAI, CreateAISession, LoadAISettings, ResolveAICanvas, LoadPromptTemplates } from "../../wailsjs/go/main/App";
@@ -6,7 +6,6 @@ import { EventsOn } from "../../wailsjs/runtime/runtime";
 import { materializeCanvas, reconcileMermaid, renderMermaid } from "./mermaid";
 import { nextPreviewElements, rebasePreviewEdits, sceneSignature, splitMCPElements } from "./scene";
 import { matchingTemplates, firstBlank } from "../settings/templates";
-import { presentationFromElements } from "../presentation/presentation";
 import { slideFrames } from "../slides/slides";
 
 function blobDataURL(blob) {
@@ -24,14 +23,13 @@ function restoreMCPElements(elements) {
   return restore({ elements: [...standard, ...converted] }, null, null, { repairBindings: true }).elements;
 }
 
-export function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onSlides, onReplay, recordingEnabled, recording, onRecord, onStopRecording }) {
+export const CanvasChat = forwardRef(function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onSlides, onReplay, recordingEnabled, recording, onRecord, onStopRecording }, ref) {
   const [prompt, setPrompt] = useState("");
   const [templates, setTemplates] = useState([]);
   const [templateIndex, setTemplateIndex] = useState(0);
   const [templateMenu, setTemplateMenu] = useState(false);
   const composerInput = useRef();
   const [slidesReady, setSlidesReady] = useState(false);
-  const [replayReady, setReplayReady] = useState(false);
   const [addonsOpen, setAddonsOpen] = useState(false);
   const addons = useRef();
   const [messages, setMessages] = useState([]);
@@ -52,7 +50,8 @@ export function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onS
   currentAPI.current = api;
 
   const recordingActive = recording.phase !== "idle";
-  const addonsAvailable = slidesReady || replayReady || recordingEnabled || recordingActive;
+  const addonsAvailable = !!api;
+  useImperativeHandle(ref, () => ({ generate: (text) => send(null, text), cancel: () => cancel() }));
   useEffect(() => {
     if (!addonsOpen) return;
     if (!addonsAvailable) { setAddonsOpen(false); return; }
@@ -120,13 +119,6 @@ export function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onS
     if (event.key === "Enter" && !event.shiftKey) send(event);
   }
 
-  useEffect(() => {
-    if (!api) { setReplayReady(false); return; }
-    const update = (elements) => setReplayReady(!!presentationFromElements(elements));
-    update(api.getSceneElements());
-    return api.onChange(update);
-  }, [api]);
-
   useEffect(() => () => { request.current++; if (running.current) CancelAI(); clearPreview(false); }, []);
   useEffect(() => EventsOn("ai:canvas", async (job) => {
     const turn = canvasJob.current;
@@ -185,17 +177,20 @@ export function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onS
     finally { if (id === request.current) { running.current = false; setBusy(false); } }
   }
 
-  async function send(event) {
-    event.preventDefault();
-    if (!api || running.current || !prompt.trim()) return;
+  async function send(event, narrationPrompt) {
+    event?.preventDefault();
+    const text = (narrationPrompt ?? prompt).trim();
+    if (!api || running.current || !text) return false;
     const id = ++request.current;
     running.current = true; setBusy(true); setError("");
-    const text = prompt.trim();
     let unsubscribe;
     try {
       const settings = await LoadAISettings();
       if (id !== request.current) return;
-      if (!settings.hasAPIKey) { onSettings(); return; }
+      if (!settings.hasAPIKey) {
+        if (narrationPrompt !== undefined) throw Error("Add your API key in Settings → AI before generating a narrated replay.");
+        onSettings(); return false;
+      }
       const originalElements = api.getSceneElements();
       const elements = reconcileMermaid(originalElements);
       const signature = sceneSignature(originalElements);
@@ -213,7 +208,7 @@ export function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onS
         if (id !== request.current) return;
         session.current = sessionID;
       }
-      setPrompt("");
+      if (narrationPrompt === undefined) setPrompt("");
       setMessages((previous) => [...previous, { role: "user", content: text }]);
       canvasJob.current = { id, api, signature };
       const requestID = `${session.current}-${id}`;
@@ -252,7 +247,7 @@ export function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onS
           // A partial preview may have unresolved bindings; the final result is validated below.
         }
       });
-      const result = await AskAI(doc.path, scene, checkpoint.current, text, screenshot, messages.slice(-12), session.current, requestID, mode === "fast" ? "none" : "high");
+      const result = await AskAI(doc.path, scene, checkpoint.current, text, screenshot, narrationPrompt === undefined ? messages.slice(-12) : [], session.current, requestID, mode === "fast" ? "none" : "high");
       if (id !== request.current) return;
       if (currentAPI.current !== api) throw new Error("The document changed. Send your request again.");
       if (!playback.current && sceneSignature(api.getSceneElements()) !== signature) {
@@ -273,7 +268,12 @@ export function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onS
       }
       checkpoint.current = result.checkpointId;
       setMessages((previous) => [...previous, { role: "assistant", content: result.reply || "Canvas updated.", reasoning_content: result.reasoningContent || "" }]);
-    } catch (error) { if (id === request.current) { setError(String(error)); setPrompt(text); } }
+      return true;
+    } catch (error) {
+      if (narrationPrompt !== undefined) throw error;
+      if (id === request.current) { setError(String(error)); setPrompt(text); }
+      return false;
+    }
     finally { unsubscribe?.(); if (canvasJob.current?.id === id) canvasJob.current = null; if (id === request.current) { clearPreview(); running.current = false; setBusy(false); } }
   }
 
@@ -309,7 +309,7 @@ export function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onS
           {recording.phase === "recording" && <span className="recording-dot addons-recording-dot" />}
         </button>
         {addonsOpen && <div className="addons-menu" role="menu" aria-label="Add-ons">
-          {replayReady && <button type="button" role="menuitem" disabled={busy || !api || recordingActive} onClick={() => { setAddonsOpen(false); onReplay(); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="m8 8 6 4-6 4z" /><circle cx="18" cy="6" r="2" /></svg>Narrated replay</button>}
+          <button type="button" role="menuitem" disabled={busy || !api || recordingActive} onClick={() => { setAddonsOpen(false); onReplay(); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="m8 8 6 4-6 4z" /><circle cx="18" cy="6" r="2" /></svg>Narrated replay</button>
           {slidesReady && <button type="button" role="menuitem" disabled={busy || !api || recording.mode === "canvas-locked" && recordingActive} onClick={() => { setAddonsOpen(false); onSlides(); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="14" rx="2" /><path d="M12 17v4m-4 0h8M10 7l6 3-6 3z" /></svg>Preview slides</button>}
           {(recordingEnabled || recordingActive) && <button type="button" role="menuitem" disabled={recording.phase === "starting" || recording.phase === "stopping" || !api} onClick={() => { setAddonsOpen(false); recordingActive ? onStopRecording() : onRecord(); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{recordingActive ? <rect x="6" y="6" width="12" height="12" rx="2" /> : <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8m-4-4v4" /><circle cx="12" cy="10.5" r="3" /></>}</svg>{recording.phase === "starting" ? "Starting recording…" : recording.phase === "stopping" ? "Saving recording…" : recordingActive ? "Stop recording" : "Screen recording"}</button>}
         </div>}
@@ -317,4 +317,4 @@ export function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onS
     </div>
     <span className="sr-only" role="status">{busy ? "AI is working" : lastReply}</span>
   </div>;
-}
+});
