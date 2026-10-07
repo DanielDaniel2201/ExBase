@@ -121,13 +121,13 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
     </header>
     <div className="settings-content">
       <nav className="settings-nav" aria-label="Settings sections">{["General", "AI"].map((name) => <button type="button" key={name} className={section === name ? "active" : ""} aria-current={section === name ? "page" : undefined} onClick={() => setSection(name)}>{name}</button>)}</nav>
-      <div className="settings-panel">
+      <div className="settings-panel" inert={generalSaving ? "" : undefined} aria-busy={generalSaving}>
         {section === "General" ? <>
           <h3 className="general-settings-heading">Slides</h3>
-          <label className="general-toggle"><span><strong>Frame slide preview</strong><small>Show Preview slides in the add-ons menu when every element belongs to a Frame.</small></span><input type="checkbox" role="switch" aria-label="Frame slide preview" checked={!!generalSettings?.slidesEnabled} disabled={!generalSettings || generalSaving} onChange={(event) => saveGeneral({ slidesEnabled: event.target.checked })} /></label>
+          <label className="general-toggle"><span><strong>Frame slide preview</strong><small>Show Preview slides in the add-ons menu when every element belongs to a Frame.</small></span><input type="checkbox" role="switch" aria-label="Frame slide preview" checked={!!generalSettings?.slidesEnabled} disabled={!generalSettings} onChange={(event) => saveGeneral({ slidesEnabled: event.target.checked })} /></label>
           <h3 className="general-settings-heading recording-settings-heading">Screen recording</h3>
-          <label className="general-toggle"><span><strong>Enable screen recording</strong><small>Show recording in the add-ons menu beside New chat.</small></span><input type="checkbox" role="switch" aria-label="Enable screen recording" checked={!!generalSettings?.recordingEnabled} disabled={!generalSettings || generalSaving || recordingActive} onChange={(event) => saveGeneral({ recordingEnabled: event.target.checked })} /></label>
-          <fieldset className="recording-modes" disabled={!generalSettings?.recordingEnabled || generalSaving || recordingActive}>
+          <label className="general-toggle"><span><strong>Enable screen recording</strong><small>Show recording in the add-ons menu beside New chat.</small></span><input type="checkbox" role="switch" aria-label="Enable screen recording" checked={!!generalSettings?.recordingEnabled} disabled={!generalSettings || recordingActive} onChange={(event) => saveGeneral({ recordingEnabled: event.target.checked })} /></label>
+          <fieldset className="recording-modes" disabled={!generalSettings?.recordingEnabled || recordingActive}>
             <legend>Recording area</legend>
             <div className="recording-mode-options">{[
               ["app", "Entire application", "Record this ExBase window, including Settings, the sidebar and file switches."],
@@ -135,7 +135,7 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
               ["canvas-locked", "Canvas only lock navigation", "Record this canvas and disable workspace, file, Settings and sidebar controls until recording stops."],
             ].map(([value, title, help]) => <label key={value} className="recording-mode-option" title={help}><input className="sr-only" type="radio" name="recording-mode" value={value} aria-label={title} checked={(generalSettings?.recordingMode || "canvas") === value} onChange={() => saveGeneral({ recordingMode: value })} /><span className="recording-mode-preview"><RecordingAreaPreview mode={value} /></span><span className="recording-mode-name">{title}</span></label>)}</div>
           </fieldset>
-          <label className="general-toggle"><span><strong>Keep recording on cancel</strong><small>When enabled, canceling Save keeps the video in ~/.exbase/recordings. When disabled, it discards the video.</small></span><input type="checkbox" role="switch" aria-label="Keep recording on cancel" checked={!!generalSettings?.keepRecordingOnCancel} disabled={!generalSettings?.recordingEnabled || generalSaving || recordingActive} onChange={(event) => saveGeneral({ keepRecordingOnCancel: event.target.checked })} /></label>
+          <label className="general-toggle"><span><strong>Keep recording on cancel</strong><small>When enabled, canceling Save keeps the video in ~/.exbase/recordings. When disabled, it discards the video.</small></span><input type="checkbox" role="switch" aria-label="Keep recording on cancel" checked={!!generalSettings?.keepRecordingOnCancel} disabled={!generalSettings?.recordingEnabled || recordingActive} onChange={(event) => saveGeneral({ keepRecordingOnCancel: event.target.checked })} /></label>
           {recordingActive && <p className="template-help">Stop recording to change recording settings.</p>}
         </> : <>
         <h3>Model Provider</h3>
