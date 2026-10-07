@@ -46,8 +46,8 @@ export function VideoEditor({ screenRecording, webcamRecording, document: record
     };
   }, [screenRecording.url, webcamRecording]);
 
-  function renderFrame() {
-    const canvas = canvasRef.current, screen = screenVideoRef.current, webcam = webcamVideoRef.current;
+  function renderFrame(canvas = canvasRef.current) {
+    const screen = screenVideoRef.current, webcam = webcamVideoRef.current;
     if (!canvas || screen.readyState < 2) return;
     if (canvas.width !== screen.videoWidth || canvas.height !== screen.videoHeight) { canvas.width = screen.videoWidth; canvas.height = screen.videoHeight; }
     const ctx = canvas.getContext("2d");
@@ -80,6 +80,7 @@ export function VideoEditor({ screenRecording, webcamRecording, document: record
 
   // Handle drag
   const handleMouseDown = (e) => {
+    if (exporting) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -105,7 +106,7 @@ export function VideoEditor({ screenRecording, webcamRecording, document: record
   };
 
   const handleMouseMove = (e) => {
-    if (!isDragging) return;
+    if (exporting || !isDragging) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -153,6 +154,7 @@ export function VideoEditor({ screenRecording, webcamRecording, document: record
       await onExport(webcamRecording && bubbleConfig.enabled ? async () => {
         id = await BeginPresentationExport(recordingDocument, screenRecording.token);
         const screen = screenVideoRef.current, webcam = webcamVideoRef.current;
+        const output = document.createElement("canvas");
         screen.muted = true;
         try {
           const frames = Math.ceil(duration * 20);
@@ -160,8 +162,8 @@ export function VideoEditor({ screenRecording, webcamRecording, document: record
             const time = frame / 20;
             await seekVideo(screen, Math.min(time, duration - 0.001));
             await seekVideo(webcam, Number.isFinite(webcam.duration) ? Math.min(time, Math.max(0, webcam.duration - 0.001)) : time);
-            renderFrame();
-            await AppendRecordingFrame(id, canvasRef.current.toDataURL("image/png").split(",")[1]);
+            renderFrame(output);
+            await AppendRecordingFrame(id, output.toDataURL("image/png").split(",")[1]);
             setExportProgress(Math.round((frame + 1) / frames * 100));
           }
           return id;
