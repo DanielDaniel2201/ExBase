@@ -403,6 +403,7 @@ func (a *App) registerPresentationVideo(path string) PresentationVideo {
 func (a *App) ReleasePresentationVideo(token string) {
 	a.presentationMu.Lock()
 	delete(a.presentationMedia, token)
+	delete(a.recordingMedia, token)
 	a.presentationMu.Unlock()
 }
 

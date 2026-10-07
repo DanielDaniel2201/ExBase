@@ -5,7 +5,7 @@ import { CameraOff } from "lucide-react";
  * Draggable webcam bubble overlay for screen recordings.
  * Shows webcam feed in a circular or rounded bubble that can be positioned by the user.
  */
-export function WebcamBubble({ enabled, shape = "circle", preview = false, initialPosition = null, onPositionChange, onStreamChange }) {
+export function WebcamBubble({ enabled, shape = "circle", preview = false, initialPosition = null, onPositionChange, mediaStream }) {
   const videoRef = useRef(null);
   const containerRef = useRef(null);
   const [stream, setStream] = useState(null);
@@ -18,35 +18,29 @@ export function WebcamBubble({ enabled, shape = "circle", preview = false, initi
 
   // Start/stop webcam stream based on enabled prop
   useEffect(() => {
-    if (!enabled) {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-        setStream(null);
-        onStreamChange?.(null);
-      }
-      return;
-    }
+    if (!enabled) return;
 
     let mounted = true;
-    navigator.mediaDevices.getUserMedia({
+    let ownedStream;
+    (mediaStream ? Promise.resolve(mediaStream) : navigator.mediaDevices.getUserMedia({
       video: {
         width: { ideal: 640 },
         height: { ideal: 480 },
         facingMode: "user"
       },
       audio: false
-    })
-      .then(mediaStream => {
+    }))
+      .then(resolvedStream => {
         if (!mounted) {
-          mediaStream.getTracks().forEach(track => track.stop());
+          if (!mediaStream) resolvedStream.getTracks().forEach(track => track.stop());
           return;
         }
-        setStream(mediaStream);
+        ownedStream = resolvedStream;
+        setStream(resolvedStream);
         setError(null);
         if (videoRef.current) {
-          videoRef.current.srcObject = mediaStream;
+          videoRef.current.srcObject = resolvedStream;
         }
-        onStreamChange?.(mediaStream);
       })
       .catch(err => {
         if (!mounted) return;
@@ -58,11 +52,9 @@ export function WebcamBubble({ enabled, shape = "circle", preview = false, initi
 
     return () => {
       mounted = false;
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
+      if (!mediaStream) ownedStream?.getTracks().forEach(track => track.stop());
     };
-  }, [enabled]);
+  }, [enabled, mediaStream]);
 
   // Update video element when stream changes
   useEffect(() => {
@@ -73,14 +65,15 @@ export function WebcamBubble({ enabled, shape = "circle", preview = false, initi
 
   // Drag handlers
   const handlePointerDown = (e) => {
-    if (!enabled || !stream || e.target !== containerRef.current) return;
+    if (!enabled || !stream) return;
     setIsDragging(true);
-    const rect = e.currentTarget.getBoundingClientRect();
+    const rect = containerRef.current.getBoundingClientRect();
     setDragOffset({
       x: e.clientX - rect.left,
       y: e.clientY - rect.top
     });
-    e.currentTarget.setPointerCapture(e.pointerId);
+    containerRef.current.setPointerCapture(e.pointerId);
+    e.preventDefault();
   };
 
   const handlePointerMove = (e) => {
@@ -106,7 +99,7 @@ export function WebcamBubble({ enabled, shape = "circle", preview = false, initi
   const handlePointerUp = (e) => {
     if (isDragging) {
       setIsDragging(false);
-      e.currentTarget.releasePointerCapture(e.pointerId);
+      if (containerRef.current?.hasPointerCapture(e.pointerId)) containerRef.current.releasePointerCapture(e.pointerId);
     }
   };
 
@@ -145,4 +138,3 @@ export function WebcamBubble({ enabled, shape = "circle", preview = false, initi
     </div>
   );
 }
-

@@ -25,6 +25,7 @@ type App struct {
 	recordingEncoder  *mp4Encoder
 	presentationMu    sync.Mutex
 	presentationMedia map[string]string
+	recordingMedia    map[string]string
 }
 
 func NewApp() *App {

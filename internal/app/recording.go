@@ -100,6 +100,67 @@ func (a *App) FinishRecording(id string) (string, error) {
 	})
 }
 
+// PrepareRecording closes the encoder before exposing a seekable local video.
+// The editor owns the selected media token; native recording is no longer active.
+func (a *App) PrepareRecording(id string) (PresentationVideo, error) {
+	a.recordingMu.Lock()
+	defer a.recordingMu.Unlock()
+	if id == "" || id != a.recordingID || a.recordingSaving {
+		return PresentationVideo{}, errors.New("recording is no longer active")
+	}
+	if err := a.finalizeMP4Locked(); err != nil {
+		return PresentationVideo{}, err
+	}
+	if a.recordingFile != nil {
+		info, err := a.recordingFile.Stat()
+		if err != nil || info.Size() == 0 {
+			return PresentationVideo{}, errors.New("no video frames were captured")
+		}
+		if err := a.recordingFile.Sync(); err != nil {
+			return PresentationVideo{}, err
+		}
+		if err := a.recordingFile.Close(); err != nil {
+			return PresentationVideo{}, err
+		}
+		a.recordingFile = nil
+	}
+	video := a.registerPresentationVideo(a.recordingPath)
+	a.presentationMu.Lock()
+	if a.recordingMedia == nil {
+		a.recordingMedia = map[string]string{}
+	}
+	a.recordingMedia[video.Token] = a.recordingName
+	a.presentationMu.Unlock()
+	a.recordingID = ""
+	return video, nil
+}
+
+// Save an already finalized recording through the same cancellation policy.
+func (a *App) SaveRecordingVideo(token string) (string, error) {
+	return a.saveRecordingVideo(token, func(options runtime.SaveDialogOptions) (string, error) {
+		return runtime.SaveFileDialog(a.ctx, options)
+	})
+}
+
+func (a *App) saveRecordingVideo(token string, dialog func(runtime.SaveDialogOptions) (string, error)) (string, error) {
+	a.presentationMu.Lock()
+	source := a.presentationMedia[token]
+	name := a.recordingMedia[token]
+	a.presentationMu.Unlock()
+	if source == "" || name == "" {
+		return "", errors.New("recording is no longer available")
+	}
+	a.recordingMu.Lock()
+	if a.recordingID != "" {
+		a.recordingMu.Unlock()
+		return "", errors.New("a recording is already active")
+	}
+	a.recordingID, a.recordingPath, a.recordingName = filepath.Base(source), source, name
+	id := a.recordingID
+	a.recordingMu.Unlock()
+	return a.finishRecording(id, dialog)
+}
+
 func (a *App) finishRecording(id string, saveDialog func(runtime.SaveDialogOptions) (string, error)) (string, error) {
 	a.recordingMu.Lock()
 	if id == "" || id != a.recordingID || a.recordingSaving {

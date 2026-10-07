@@ -254,7 +254,7 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 .replay-status:empty { display: none; }
 .replay-footer { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
 .replay-footer > span { flex: 1; overflow-wrap: anywhere; }
-.webcam-bubble { position: absolute; width: 180px; height: 180px; border-radius: 50%; overflow: hidden; border: 3px solid rgba(255, 255, 255, 0.9); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); cursor: move; user-select: none; z-index: 1000; background: #000; transition: opacity 0.2s ease; }
+.webcam-bubble { position: fixed; touch-action: none; width: 180px; height: 180px; border-radius: 50%; overflow: hidden; border: 3px solid rgba(255, 255, 255, 0.9); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); cursor: move; user-select: none; z-index: 1000; background: #000; transition: opacity 0.2s ease; }
 .webcam-bubble.rounded { border-radius: 16px; }
 .webcam-bubble.dragging { cursor: grabbing; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
 .webcam-bubble.hidden .webcam-video { opacity: 0; }
@@ -264,9 +264,10 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 .webcam-toggle:hover { background: rgba(0, 0, 0, 0.8); }
 .webcam-error { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.5); color: #ef4444; padding: 16px; cursor: default; position: fixed; width: 180px; height: 180px; }
 .webcam-error-text { font-size: 12px; text-align: center; font-weight: 500; }
-.webcam-bubble.preview { border-color: rgba(102, 102, 102, 0.8); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); }
+.webcam-bubble.preview { z-index: 10000; border-color: rgba(102, 102, 102, 0.8); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); }
 .webcam-preview-hint { position: absolute; bottom: -32px; left: 50%; transform: translateX(-50%); padding: 4px 12px; background: rgba(0, 0, 0, 0.75); color: white; font-size: 11px; border-radius: 4px; white-space: nowrap; pointer-events: none; }
-.recording-setup-modal { z-index: 9999; }
+.recording-setup-overlay { position: fixed; inset: 0; background: #0005; z-index: 9999; display: grid; place-items: center; }
+.recording-setup-modal { position: relative; margin: 0; z-index: 9999; }
 .recording-setup-modal { width: min(480px, calc(100vw - 48px)); padding: 0; border: 1px solid #ccc; border-radius: 8px; background: #f7f7f8; color: #202124; box-shadow: 0 12px 40px #0003; font-size: 13px; }
 .recording-setup-modal::backdrop { background: #0005; }
 .recording-setup-content { display: flex; flex-direction: column; }
@@ -306,7 +307,7 @@ aside > small { min-height: 28px; padding: 6px 10px; overflow: hidden; color: #7
 .video-editor-content { flex: 1; display: grid; grid-template-columns: 1fr 280px; gap: 0; min-height: 0; }
 .video-editor-preview { background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .video-editor-canvas { max-width: 100%; max-height: 100%; cursor: move; }
-.video-editor-sidebar { padding: 20px; background: #fff; border-left: 1px solid #ddd; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
+.video-editor-sidebar { margin: 0; min-width: 0; border: 0; padding: 20px; background: #fff; border-left: 1px solid #ddd; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
 .video-editor-section { display: flex; flex-direction: column; gap: 12px; }
 .video-editor-section h3 { margin: 0; font-size: 13px; font-weight: 600; }
 .video-editor-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; }

@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"exbase/internal/settings"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -176,5 +178,60 @@ func TestRecordingChunksAndRecovery(t *testing.T) {
 	got, _ = os.ReadFile(destination)
 	if string(got) != string(data) {
 		t.Fatal("failed save damaged existing recording")
+	}
+}
+
+func TestPrepareRecordingForEditor(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+	a := NewApp()
+	id, err := a.BeginRecording("Canvas.excalidraw", "mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Large files bypass the bridge. Range reads must work before Export.
+	payload := strings.Repeat("v", 11<<20)
+	if err := a.AppendRecording(id, base64.StdEncoding.EncodeToString([]byte(payload))); err != nil {
+		t.Fatal(err)
+	}
+	video, err := a.PrepareRecording(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.recordingID != "" || a.recordingFile != nil {
+		t.Fatal("editor still blocks window close or a new recording")
+	}
+	if _, err := a.PrepareRecording(id); err == nil {
+		t.Fatal("stale recording accepted")
+	}
+	r := httptest.NewRequest(http.MethodGet, video.URL, nil)
+	r.Header.Set("Range", "bytes=100-109")
+	w := httptest.NewRecorder()
+	PresentationMediaHandler(a).ServeHTTP(w, r)
+	if w.Code != 206 || w.Body.String() != "vvvvvvvvvv" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	unrelated := a.registerPresentationVideo(video.Path)
+	if _, err := a.saveRecordingVideo(unrelated.Token, func(runtime.SaveDialogOptions) (string, error) {
+		t.Fatal("unrelated video reached save")
+		return "", nil
+	}); err == nil {
+		t.Fatal("non-recording token accepted")
+	}
+	saved := filepath.Join(home, "export.mp4")
+	path, err := a.saveRecordingVideo(video.Token, func(runtime.SaveDialogOptions) (string, error) { return saved, nil })
+	if err != nil || path != saved {
+		t.Fatal(path, err)
+	}
+	info, err := os.Stat(saved)
+	if err != nil || info.Size() != int64(len(payload)) {
+		t.Fatal("saved bytes lost", err)
+	}
+	a.ReleasePresentationVideo(video.Token)
+	w = httptest.NewRecorder()
+	PresentationMediaHandler(a).ServeHTTP(w, r)
+	if w.Code != 404 || a.recordingMedia[video.Token] != "" {
+		t.Fatal("media token was not released")
 	}
 }

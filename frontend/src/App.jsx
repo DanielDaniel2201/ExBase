@@ -13,7 +13,6 @@ import { SettingsModal } from "./settings/SettingsModal";
 import { SlidePreview } from "./slides/SlidePreview";
 import { useRecording } from "./recording/useRecording";
 import { NarratedReplay } from "./presentation/NarratedReplay";
-import { WebcamBubble } from "./recording/WebcamBubble";
 import { RecordingSetup } from "./recording/RecordingSetup";
 import { VideoEditor } from "./recording/VideoEditor";
 
@@ -46,14 +45,12 @@ export default function App() {
   const [replayOpen, setReplayOpen] = useState(false);
   const [recordingSetupOpen, setRecordingSetupOpen] = useState(false);
   const [recordingMode, setRecordingMode] = useState(null);
-  const [webcamConfig, setWebcamConfig] = useState({ enabled: false, shape: "circle", position: null });
-  const [webcamPreview, setWebcamPreview] = useState(null);
   const picker = useRef();
   const autosaveTimer = useRef();
   const lastSaved = useRef("");
   const aiPreview = useRef(null);
   const chat = useRef(null);
-  const { recording, start: startRecording, stop: stopRecording, locked, notice, dismissNotice, recordedVideos, clearRecordedVideos } = useRecording(api, doc, setStatus);
+  const { recording, start: startRecording, stop: stopRecording, locked, notice, dismissNotice, recordedVideos, clearRecordedVideos, saveRecording } = useRecording(api, doc, setStatus);
   const lockedRef = useRef(locked);
   lockedRef.current = locked;
 
@@ -315,23 +312,13 @@ export default function App() {
   }
 
   function handleRecordingStart(config) {
-    setWebcamConfig({
-      enabled: config.webcamEnabled,
-      shape: config.bubbleShape,
-      position: config.bubblePosition
-    });
     setRecordingSetupOpen(false);
-    startRecording(recordingMode, true, config.webcamEnabled, config);
+    startRecording(recordingMode, true, config.webcamEnabled);
   }
 
   function handleRecordingCancel() {
     setRecordingSetupOpen(false);
     setRecordingMode(null);
-    setWebcamPreview(null);
-  }
-
-  function handleWebcamPreviewChange(config) {
-    setWebcamPreview(config);
   }
 
   if (!workspace) return <main className="welcome-shell">
@@ -406,23 +393,18 @@ export default function App() {
         ? <Excalidraw key={`canvas:${doc.path}`} initialData={{ ...doc.scene, scrollToContent: true }} viewModeEnabled={slidesOpen} excalidrawAPI={setApi} onChange={autosave} />
         : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an <PencilRuler className="file-icon" aria-hidden="true" /> Excalidraw file from the sidebar.<br />Or double-click to create a new one.</p></div>}
       {doc && <CanvasChat ref={chat} key={`chat:${doc.path}`} doc={doc} api={api} aiPreview={aiPreview} slidesEnabled={generalSettings?.slidesEnabled} onSlides={() => setSlidesOpen(true)} onReplay={() => setReplayOpen(true)} onSettings={() => { if (!lockedRef.current) setSettingsOpen(true); }} recordingEnabled={generalSettings?.recordingEnabled} recording={recording} onRecord={handleRecordClick} onStopRecording={stopRecording} />}
-      {recording.webcamEnabled && <WebcamBubble enabled={recording.webcamEnabled} shape={webcamConfig.shape} initialPosition={webcamConfig.position} />}
     </section>
     {slidesOpen && <SlidePreview api={api} doc={doc} onClose={() => setSlidesOpen(false)} />}
     {replayOpen && api && doc && <NarratedReplay key={doc.path} api={api} doc={doc} onGenerate={(text) => chat.current.generate(text)} onCancel={() => chat.current?.cancel()} onClose={() => setReplayOpen(false)} />}
     {notice && <div className={`recording-notice ${notice.error ? "error" : ""}`} role={notice.error ? "alert" : "status"}><span>{notice.text}</span><button type="button" aria-label="Dismiss recording message" onClick={dismissNotice}>×</button></div>}
-    {webcamPreview?.enabled && <WebcamBubble enabled={true} shape={webcamPreview.shape} preview={true} onPositionChange={webcamPreview.onPositionChange} />}
-    {recordingSetupOpen && <RecordingSetup mode={recordingMode} onStart={handleRecordingStart} onCancel={handleRecordingCancel} onWebcamChange={handleWebcamPreviewChange} />}
-    {recordedVideos.screen && recordedVideos.webcam && (
+    {recordingSetupOpen && <RecordingSetup onStart={handleRecordingStart} onCancel={handleRecordingCancel} />}
+    {recordedVideos.screen && (
       <VideoEditor
         screenRecording={recordedVideos.screen}
         webcamRecording={recordedVideos.webcam}
+        document={recordedVideos.document}
         onClose={clearRecordedVideos}
-        onExport={async (config) => {
-          console.log("Export with config:", config);
-          // TODO: Implement actual video export
-          clearRecordedVideos();
-        }}
+        onExport={saveRecording}
       />
     )}
     {settingsOpen && <SettingsModal generalSettings={generalSettings} onGeneralSettings={setGeneralSettings} recordingActive={recording.phase !== "idle"} onClose={() => setSettingsOpen(false)} />}

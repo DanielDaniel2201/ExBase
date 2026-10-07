@@ -61,7 +61,9 @@ const encoders = new Map();
         BeginMP4Recording: async () => { assertIdle(); const id = await window.checkBeginMP4(); window.check.recording = { id, format: 'mp4', chunks: [], frames: 0, microphone: false }; return id; },
         AppendRecordingFrame: async (id, frame) => { if (window.check.recording.id !== id) throw Error('stale recording'); await window.checkAppendFrame(id, frame); window.check.recording.frames++; },
         StartRecordingMicrophone: async (id) => { if (window.check.recording.id !== id) throw Error('stale microphone'); window.check.recording.microphone = true; },
-        FinishRecording: async (id) => { if (window.check.recording.id !== id) throw Error('stale finish'); if (window.check.emitCloseDuringSave) window.check.listeners.get('recording:close-requested')?.(); const data = await window.checkFinishMP4(id); window.check.recording.chunks.push(data); window.check.videos.push(window.check.recording); window.check.recording = null; return window.check.cancelSave ? (window.check.general.keepRecordingOnCancel ? 'D:\\check\\.exbase\\recordings\\recording.mp4' : '') : 'D:\\check\\recording.mp4'; },
+        PrepareRecording: async (id) => { if (window.check.recording.id !== id) throw Error('stale finish'); const data = await window.checkFinishMP4(id); window.check.recording.chunks.push(data); window.check.videos.push(window.check.recording); window.check.recording = null; const bytes = Uint8Array.from(atob(data), char=>char.charCodeAt(0)); return {token:id,url:URL.createObjectURL(new Blob([bytes],{type:'video/mp4'}))}; },
+        SaveRecordingVideo: async () => window.check.cancelSave ? (window.check.general.keepRecordingOnCancel ? 'D:\\check\\.exbase\\recordings\\recording.mp4' : '') : 'D:\\check\\recording.mp4',
+        ReleasePresentationVideo: async () => {},
         AbortRecording: async () => { window.check.recording = null; },
       } } };
       function assertIdle() { if (window.check.recording) throw Error('already recording'); }
@@ -74,12 +76,12 @@ const encoders = new Map();
     await page.getByRole('button', { name: 'Red.excalidraw' }).click();
     await page.waitForFunction(() => !!window.check.api && !!document.querySelector('canvas.static')?.width);
     await page.evaluate(() => { window.check.baseElement = window.check.api.getSceneElements()[0]; });
-    assert.equal(await page.getByRole('button', { name: 'Add-ons', exact: true }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: 'Add-ons', exact: true }).count(), 1);
     const settings = async () => { await page.getByRole('button', { name: 'Settings', exact: true }).click(); await page.getByRole('switch', { name: 'Enable screen recording' }).waitFor(); };
     await settings();
     await page.getByRole('switch', { name: 'Frame slide preview' }).check();
     await page.getByRole('button', { name: 'Close settings' }).click();
-    assert.equal(await page.getByRole('button', { name: 'Add-ons', exact: true }).count(), 0, 'slides require valid frames');
+    assert.equal(await page.getByRole('button', { name: 'Add-ons', exact: true }).count(), 1, 'slides require valid frames');
     await settings();
     await page.getByRole('switch', { name: 'Enable screen recording' }).check();
     await page.waitForFunction(() => window.check.general.recordingEnabled);
@@ -102,6 +104,7 @@ const encoders = new Map();
     assert.equal(await page.getByRole('menu').count(), 0);
     await addons.click();
     await page.getByRole('menuitem', { name: 'Screen recording', exact: true }).click();
+    await page.getByRole('button', { name: 'Start Recording', exact: true }).click();
     await page.waitForFunction(() => !!window.check.recording);
     await page.waitForTimeout(1400);
     await settings();
@@ -124,12 +127,15 @@ const encoders = new Map();
     assert.equal(await page.evaluate(() => window.check.videos[0].microphone), true, 'microphone is enabled by default');
     assert.equal(await page.evaluate(() => window.check.videos[0].format), 'mp4');
     fs.writeFileSync(path.join(artifacts, 'recording-canvas.mp4'), Buffer.concat((await page.evaluate(() => window.check.videos[0].chunks)).map((s) => Buffer.from(s, 'base64'))));
+    await page.getByRole('button', { name: 'Export Video', exact: true }).click();
+    await page.locator('.video-editor-overlay').waitFor({state:'hidden'});
     await page.getByRole('button', { name: 'Expand sidebar' }).click();
     await settings();
     await page.getByRole('radio', { name: 'Canvas only lock navigation' }).locator('..').click();
     await page.getByRole('button', { name: 'Close settings' }).click();
     await addons.click();
     await page.getByRole('menuitem', { name: 'Screen recording', exact: true }).click();
+    await page.getByRole('button', { name: 'Start Recording', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('aside')?.inert);
     assert.ok(await page.locator('aside').evaluate((node) => node.inert));
     assert.equal(await page.locator('.window-controls').evaluate((node) => node.inert), false);
@@ -168,12 +174,14 @@ const encoders = new Map();
     });
     await addons.click();
     await page.getByRole('menuitem', { name: 'Screen recording', exact: true }).click();
+    await page.getByRole('button', { name: 'Start Recording', exact: true }).click();
     await page.waitForFunction(() => !!window.check.recording);
     await page.waitForTimeout(1100);
     await page.locator('.recording-status').click();
     await page.waitForFunction(() => window.check.videos.length === 3);
     assert.equal(await page.evaluate(() => window.check.videos[2].format), 'mp4');
     assert.equal(await page.evaluate(() => window.check.videos[2].microphone), true, 'legacy microphone opt-out is ignored');
+    await page.getByRole('button', { name: 'Export Video', exact: true }).click();
     await page.getByRole('status').filter({ hasText: 'Recording discarded.' }).waitFor();
     assert.equal(await page.evaluate(() => window.check.quits), 1, 'discarding after a normal stop must not quit');
     fs.writeFileSync(path.join(artifacts, 'recording-silent.mp4'), Buffer.concat((await page.evaluate(() => window.check.videos[2].chunks)).map((s) => Buffer.from(s, 'base64'))));
@@ -183,10 +191,10 @@ const encoders = new Map();
     });
     await addons.click();
     await page.getByRole('menuitem', { name: 'Preview slides' }).waitFor();
-    assert.equal(await page.getByRole('menuitem').count(), 2);
+    assert.equal(await page.getByRole('menuitem').count(), 3);
     await page.screenshot({ path: path.join(artifacts, 'recording-addons.png') });
     await addons.focus(); await page.keyboard.press('ArrowDown');
-    assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Preview slides');
+    assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Narrated replay');
     await page.keyboard.press('Escape');
     // App mode uses only the native ExBase source, with no browser sharing API.
     await settings();
@@ -200,6 +208,7 @@ const encoders = new Map();
     });
     await addons.click();
     await page.getByRole('menuitem', { name: 'Screen recording', exact: true }).click();
+    await page.getByRole('button', { name: 'Start Recording', exact: true }).click();
     await page.waitForFunction(() => !!window.check.recording && window.check.applicationFrames > 2);
     assert.equal(await page.evaluate(() => window.check.displayRequests), 0);
     assert.equal(await page.locator('aside').evaluate((node) => node.inert), false);
@@ -208,12 +217,14 @@ const encoders = new Map();
     await page.waitForTimeout(1200);
     await page.locator('.recording-status').click();
     await page.waitForFunction(() => window.check.videos.length === 4);
+    await page.getByRole('button', { name: 'Export Video', exact: true }).click();
     await page.getByRole('status').filter({ hasText: 'Recording saved: D:\\check\\.exbase\\recordings\\recording.mp4' }).waitFor();
     assert.equal(await page.evaluate(() => window.check.quits), 1, 'stopping app recording must not quit');
     fs.writeFileSync(path.join(artifacts, 'recording-app.mp4'), Buffer.concat((await page.evaluate(() => window.check.videos[3].chunks)).map((s) => Buffer.from(s, 'base64'))));
     // Source failures stop and save captured frames while leaving the app open.
     await addons.click();
     await page.getByRole('menuitem', { name: 'Screen recording', exact: true }).click();
+    await page.getByRole('button', { name: 'Start Recording', exact: true }).click();
     await page.waitForFunction(() => !!window.check.recording);
     await page.waitForTimeout(1100);
     await page.evaluate(() => { window.check.failNativeCapture = true; });
@@ -221,11 +232,12 @@ const encoders = new Map();
     await page.getByRole('alert').filter({ hasText: 'Native capture interrupted' }).waitFor();
     assert.equal(await page.evaluate(() => window.check.quits), 1, 'source ending must never quit');
     assert.equal(await page.evaluate(() => window.check.recording), null);
+    await page.getByRole('button', { name: 'Close editor' }).click();
     await settings();
     await page.getByRole('switch', { name: 'Frame slide preview' }).uncheck();
     await page.getByRole('switch', { name: 'Enable screen recording' }).uncheck();
     await page.getByRole('button', { name: 'Close settings' }).click();
-    assert.equal(await addons.count(), 0);
+    assert.equal(await addons.count(), 1);
     assert.deepEqual(errors, []);
     const video = path.join(artifacts, 'recording-canvas.mp4');
     const metadata = JSON.parse(execFileSync(nativeCheck, ['inspect', video], { encoding: 'utf8' }));

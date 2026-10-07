@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AbortRecording, AppendRecordingFrame, BeginMP4Recording, FinishRecording, StartRecordingMicrophone, SetRecordingWebcam, DisableRecordingWebcam } from "../../wailsjs/go/main/App";
+import { AbortRecording, AppendRecordingFrame, BeginMP4Recording, StartRecordingMicrophone, PrepareRecording, SaveRecordingVideo, FinishRecording, ReleasePresentationVideo } from "../../wailsjs/go/main/App";
 import { EventsOn, Quit } from "../../wailsjs/runtime/runtime";
 import { recordingFrames } from "./capture";
 
@@ -10,7 +10,9 @@ export function useRecording(api, doc, onStatus) {
   const current = useRef(null);
   const apiRef = useRef(api); apiRef.current = api;
   const callbacks = useRef();
-  const webcamRecorderRef = useRef(null);
+  const videosRef = useRef(null);
+  const closing = useRef(false);
+  const exporting = useRef(false);
 
   async function stop() {
     const state = current.current;
@@ -24,26 +26,17 @@ export function useRecording(api, doc, onStatus) {
       await state.frameWrite?.catch((error) => { state.error = String(error); });
       state.capture.dispose();
 
-      // Stop webcam recording
-      if (state.webcamRecorder) {
-        state.webcamRecorder.stop();
-        // Wait a bit for onstop to process
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
-
       let completed = false;
       try {
-        const path = await FinishRecording(state.id);
-
-        // If webcam was recorded, save for editing
-        if (state.webcamBlob && path) {
-          const webcamUrl = URL.createObjectURL(state.webcamBlob);
-          setRecordedVideos({ screen: path, webcam: webcamUrl });
-        }
-
-        const result = path ? `Recording saved: ${path}` : "Recording discarded.";
-        const text = state.error ? `${state.error} ${result}` : result;
-        onStatus(text); setNotice({ text, error: !!state.error }); completed = true;
+        if (state.webcamRecorder && state.webcamRecorder.state !== "inactive") state.webcamRecorder.stop();
+        state.webcamStream?.getTracks().forEach(track => track.stop());
+        await state.webcamStopped;
+        const screen = await PrepareRecording(state.id);
+        const videos = { screen, webcam: state.webcamBlob?.size ? URL.createObjectURL(state.webcamBlob) : null, document: state.document };
+        videosRef.current = videos;
+        setRecordedVideos(videos);
+        if (state.error) { onStatus(state.error); setNotice({ text: state.error, error: true }); }
+        completed = true;
       } catch (error) {
         onStatus(String(error)); setNotice({ text: String(error), error: true });
         await AbortRecording(state.id).catch(() => {});
@@ -56,9 +49,10 @@ export function useRecording(api, doc, onStatus) {
     return state.done;
   }
 
-  async function start(mode, microphone = true, webcam = false, webcamConfig = null) {
-    if (current.current || !apiRef.current) return;
-    const state = { mode, cancelled: false, webcamConfig };
+  async function start(mode, microphone = true, webcam = false) {
+    if (current.current || videosRef.current || !apiRef.current) return;
+    closing.current = false;
+    const state = { mode, cancelled: false, document: doc?.path };
     state.initialized = new Promise((resolve) => { state.initializeDone = resolve; });
     current.current = state;
     setRecording({ phase: "starting", mode, seconds: 0, webcamEnabled: webcam }); onStatus(""); setNotice(null);
@@ -72,6 +66,7 @@ export function useRecording(api, doc, onStatus) {
             audio: false
           });
 
+          state.webcamStream = webcamStream;
           const webcamRecorder = new MediaRecorder(webcamStream, {
             mimeType: 'video/webm;codecs=vp8',
             videoBitsPerSecond: 2500000
@@ -82,18 +77,21 @@ export function useRecording(api, doc, onStatus) {
             if (e.data.size > 0) webcamChunks.push(e.data);
           };
 
-          webcamRecorder.onstop = () => {
-            const webcamBlob = new Blob(webcamChunks, { type: 'video/webm' });
-            state.webcamBlob = webcamBlob;
-            webcamStream.getTracks().forEach(track => track.stop());
-          };
+          state.webcamStopped = new Promise((resolve, reject) => {
+            webcamRecorder.onerror = (event) => reject(event.error || Error("Webcam recording failed."));
+            webcamRecorder.onstop = () => {
+              state.webcamBlob = new Blob(webcamChunks, { type: 'video/webm' });
+              webcamStream.getTracks().forEach(track => track.stop());
+              resolve();
+            };
+          });
+          state.webcamStopped.catch(() => {});
 
-          webcamRecorder.start(100); // Capture chunks every 100ms
           state.webcamRecorder = webcamRecorder;
-          webcamRecorderRef.current = webcamRecorder;
         } catch (err) {
           console.error("Webcam recording failed:", err);
-          // Continue without webcam
+          state.webcamStream?.getTracks().forEach(track => track.stop());
+          throw err;
         }
       }
 
@@ -102,6 +100,7 @@ export function useRecording(api, doc, onStatus) {
       if (state.cancelled) throw Error("Recording cancelled.");
       state.id = await BeginMP4Recording(doc?.path || "ExBase", microphone);
       await AppendRecordingFrame(state.id, firstFrame);
+      if (state.webcamRecorder) state.webcamRecorder.start(100);
       if (state.cancelled) throw Error("Recording cancelled.");
 
       if (microphone) await StartRecordingMicrophone(state.id);
@@ -120,6 +119,8 @@ export function useRecording(api, doc, onStatus) {
       state.clock = setInterval(() => setRecording((value) => ({ ...value, seconds: Math.floor((Date.now() - state.started) / 1000) })), 1000);
     } catch (error) {
       state.capture?.dispose();
+      if (state.webcamRecorder?.state === "recording") state.webcamRecorder.stop();
+      state.webcamStream?.getTracks().forEach(track => track.stop());
       if (state.id) await AbortRecording(state.id).catch(() => {});
       if (current.current === state) current.current = null;
       setRecording({ phase: "idle", mode: null, seconds: 0, webcamEnabled: false });
@@ -128,32 +129,61 @@ export function useRecording(api, doc, onStatus) {
     } finally { state.initializeDone(); }
   }
 
-  callbacks.current = { stop };
+  async function clearRecordedVideos() {
+    const videos = videosRef.current;
+    videosRef.current = null;
+    if (videos?.webcam) URL.revokeObjectURL(videos.webcam);
+    if (videos?.screen) await ReleasePresentationVideo(videos.screen.token);
+    setRecordedVideos({ screen: null, webcam: null });
+  }
+
+  callbacks.current = { stop, clearRecordedVideos };
   useEffect(() => EventsOn("recording:close-requested", async () => {
-    const state = current.current;
-    if (!state || state.done) return;
-    if (await callbacks.current.stop()) Quit();
+    closing.current = true;
+    if (exporting.current) return;
+    if (await callbacks.current.stop()) {
+      await callbacks.current.clearRecordedVideos();
+      Quit();
+    } else closing.current = false;
   }), []);
   useEffect(() => () => {
     const state = current.current;
-    if (!state) return;
-    state.cancelled = true;
-    if (state.ready) callbacks.current.stop();
-    else state.capture?.dispose();
+    if (state) {
+      state.cancelled = true;
+      clearTimeout(state.timer); clearInterval(state.clock);
+      state.webcamStream?.getTracks().forEach(track => track.stop());
+      if (state.webcamRecorder?.state === "recording") state.webcamRecorder.stop();
+      state.capture?.dispose();
+      if (state.id) AbortRecording(state.id).catch(() => {});
+    }
+    const videos = videosRef.current;
+    if (videos?.webcam) URL.revokeObjectURL(videos.webcam);
+    if (videos?.screen) ReleasePresentationVideo(videos.screen.token);
   }, []);
   return {
-    recording,
-    start,
-    stop,
-    notice,
+    recording, start, stop, notice,
     dismissNotice: () => setNotice(null),
     locked: recording.phase !== "idle" && recording.mode === "canvas-locked",
-    recordedVideos,
-    clearRecordedVideos: () => {
-      if (recordedVideos.webcam) {
-        URL.revokeObjectURL(recordedVideos.webcam);
+    recordedVideos, clearRecordedVideos,
+    // Run composition first; the save dialog is the last step of Export.
+    saveRecording: async (compose) => {
+      exporting.current = true;
+      let id;
+      try {
+        if (compose) id = await compose();
+        const path = id ? await FinishRecording(id) : await SaveRecordingVideo(videosRef.current.screen.token);
+        const text = path ? `Recording saved: ${path}` : "Recording discarded.";
+        onStatus(text); setNotice({ text, error: false });
+        await clearRecordedVideos();
+        return path;
+      } catch (error) {
+        if (id) await AbortRecording(id).catch(() => {});
+        const text = String(error); onStatus(text); setNotice({ text, error: true });
+        throw error;
+      } finally {
+        exporting.current = false;
+        if (closing.current) { await clearRecordedVideos(); Quit(); }
       }
-      setRecordedVideos({ screen: null, webcam: null });
     }
   };
 }
