@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { PanelLeftClose, PanelLeftOpen, PencilRuler, Settings } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, PencilRuler, Settings, X } from "lucide-react";
 import { CaptureUpdateAction, Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
 import {
   ChooseFolder, CreateDocument, CreateFolder, DeleteEntry, OpenDocument, ReadDirectory, Rename, Save, SwitchFolder, Workspaces, LoadGeneralSettings,
@@ -376,7 +376,6 @@ export default function App() {
               <button onClick={() => createFolder()}>New Folder</button>
             </>}
       </div>}
-      {status && <small className={status === "Saved" || status === "Saving..." ? "" : "error"}>{status}</small>}
     </aside>}
     <Titlebar>
       {slidesOpen ? <span className="slides-document-name">{basename(doc.path)}</span> : !sidebarOpen && <div className="titlebar-workspace" inert={locked ? "" : undefined} onDoubleClick={(event) => event.stopPropagation()}>
@@ -396,7 +395,7 @@ export default function App() {
     </section>
     {slidesOpen && <SlidePreview api={api} doc={doc} onClose={() => setSlidesOpen(false)} />}
     {replayOpen && api && doc && <NarratedReplay key={doc.path} api={api} doc={doc} onGenerate={(text) => chat.current.generate(text)} onCancel={() => chat.current?.cancel()} onClose={() => setReplayOpen(false)} />}
-    {notice && <div className={`recording-notice ${notice.error ? "error" : ""}`} role={notice.error ? "alert" : "status"}><span>{notice.text}</span><button type="button" aria-label="Dismiss recording message" onClick={dismissNotice}>×</button></div>}
+    {notice && <div className={`recording-notice ${notice.error ? "error" : ""}`} role={notice.error ? "alert" : "status"}><span>{notice.text}</span><button type="button" aria-label="Dismiss recording message" onClick={dismissNotice}><X aria-hidden="true" /></button></div>}
     {recordingSetupOpen && <RecordingSetup onStart={handleRecordingStart} onCancel={handleRecordingCancel} />}
     {recordedVideos.screen && (
       <VideoEditor
