@@ -3,6 +3,7 @@ import { Circle, Square, Play, Pause, RotateCcw, Download, X } from "lucide-reac
 import { AbortRecording, AppendRecordingFrame, BeginPresentationExport } from "../../wailsjs/go/main/App";
 import { seekVideo } from "../presentation/render";
 import { drawBubble } from "../presentation/presentation";
+import { RECORDING_FPS } from "./format";
 
 export function VideoEditor({ screenRecording, webcamRecording, document: recordingDocument, onClose, onExport }) {
   const canvasRef = useRef(null);
@@ -157,9 +158,9 @@ export function VideoEditor({ screenRecording, webcamRecording, document: record
         const output = document.createElement("canvas");
         screen.muted = true;
         try {
-          const frames = Math.ceil(duration * 20);
+          const frames = Math.ceil(duration * RECORDING_FPS);
           for (let frame = 0; frame < frames; frame++) {
-            const time = frame / 20;
+            const time = frame / RECORDING_FPS;
             await seekVideo(screen, Math.min(time, duration - 0.001));
             await seekVideo(webcam, Number.isFinite(webcam.duration) ? Math.min(time, Math.max(0, webcam.duration - 0.001)) : time);
             renderFrame(output);

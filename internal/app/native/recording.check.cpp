@@ -37,8 +37,8 @@ static void fixture(const wchar_t* path, bool microphone) {
     recording->lastFrame = solid(false);
     recording->videoFrame(recording->lastFrame);
     if (microphone) check(RecordingMicrophone());
-    for (UINT frame = 1; frame < 60; ++frame) {
-        recording->lastFrame = solid(frame >= 30);
+    for (UINT frame = 1; frame < fps * 3; ++frame) {
+        recording->lastFrame = solid(frame >= fps * 3 / 2);
         std::lock_guard<std::mutex> lock(recording->mutex);
         recording->videoFrame(recording->lastFrame);
         if (!microphone) {
@@ -47,7 +47,7 @@ static void fixture(const wchar_t* path, bool microphone) {
             recording->sample(recording->audio, reinterpret_cast<BYTE*>(samples.data()), static_cast<DWORD>(samples.size() * 2), frame * frameDuration, frameDuration);
         }
         // A real microphone uses wall-clock time; synthesized fixtures run quickly.
-        if (microphone) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        if (microphone) std::this_thread::sleep_for(std::chrono::milliseconds(1000 / fps));
     }
     check(RecordingFinish());
 }
@@ -64,6 +64,9 @@ static void inspect(const wchar_t* path) {
     auto source = reader(path);
     ComPtr<IMFMediaType> native, decoded;
     check(source->GetNativeMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, &native));
+    UINT frameRate, frameRateDenominator;
+    check(MFGetAttributeRatio(native.Get(), MF_MT_FRAME_RATE, &frameRate, &frameRateDenominator));
+    if (frameRate != fps || frameRateDenominator != 1) check(E_FAIL);
     GUID subtype; check(native->GetGUID(MF_MT_SUBTYPE, &subtype));
     if (subtype != MFVideoFormat_H264) check(E_FAIL);
     check(source->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, FALSE));
@@ -113,7 +116,7 @@ static void inspect(const wchar_t* path) {
         }
     }
     if (!frames || w != width || h != height) check(E_FAIL);
-    std::cout << "{\"video\":\"h264\",\"audio\":\"" << (hasAudio ? "aac" : "none") << "\",\"width\":" << w << ",\"height\":" << h << ",\"frames\":" << frames << ",\"red\":" << red << ",\"blue\":" << blue << ",\"green\":" << green << ",\"audioSamples\":" << audioSamples << ",\"audioPeak\":" << peak << "}" << std::endl;
+    std::cout << "{\"video\":\"h264\",\"audio\":\"" << (hasAudio ? "aac" : "none") << "\",\"width\":" << w << ",\"height\":" << h << ",\"fps\":" << frameRate << ",\"frames\":" << frames << ",\"red\":" << red << ",\"blue\":" << blue << ",\"green\":" << green << ",\"audioSamples\":" << audioSamples << ",\"audioPeak\":" << peak << "}" << std::endl;
 }
 
 int wmain(int argc, wchar_t** argv) {
@@ -124,9 +127,9 @@ int wmain(int argc, wchar_t** argv) {
             if (argc != 4) check(E_INVALIDARG);
             check(RecordingBeginPresentation(argv[2], argv[3]));
             auto png = solidPNG();
-            for (int frame = 0; frame < 40; ++frame) {
+            for (UINT frame = 0; frame < fps * 2; ++frame) {
                 check(RecordingFrame(png.data(), static_cast<UINT>(png.size())));
-                if (frame == 20) std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                if (frame == fps) std::this_thread::sleep_for(std::chrono::milliseconds(200));
             }
             check(RecordingFinish()); inspect(argv[2]);
         } else if (std::wstring(argv[1]) == L"encode" || std::wstring(argv[1]) == L"encode-presentation") {

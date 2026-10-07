@@ -28,7 +28,7 @@ using Microsoft::WRL::ComPtr;
 using namespace winrt::Windows::Graphics::Capture;
 using namespace winrt::Windows::Graphics::DirectX;
 using namespace winrt::Windows::Graphics::DirectX::Direct3D11;
-constexpr UINT width = 1920, height = 1080, fps = 20, audioRate = 48000;
+constexpr UINT width = 1920, height = 1080, fps = 30, audioRate = 48000;
 constexpr LONGLONG frameDuration = 10000000 / fps;
 static ComPtr<IWICImagingFactory> imaging;
 static thread_local std::wstring lastError;

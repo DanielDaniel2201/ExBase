@@ -75,7 +75,7 @@ const destination = path.join(artifacts, 'narrated-replay-check.mp4');
     await page.getByRole('button', { name: 'Add-ons', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Narrated replay' }).click();
     await page.waitForFunction(() => document.querySelector('.replay-bubble video').readyState >= 2);
-    const expectedFrames = await page.evaluate(() => Math.ceil(document.querySelector('.replay-bubble video').duration * 20));
+    const expectedFrames = await page.evaluate(() => Math.ceil(document.querySelector('.replay-bubble video').duration * 30));
     await page.getByRole('button', { name: 'Play', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.replay-bubble video').currentTime > 0.1);
     await page.getByRole('button', { name: 'Pause', exact: true }).click();

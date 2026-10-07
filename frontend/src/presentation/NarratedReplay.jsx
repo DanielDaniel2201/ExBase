@@ -5,6 +5,7 @@ import { AbortRecording, AppendRecordingFrame, BeginPresentationExport, ChoosePr
 import { EventsOn, OnFileDrop, OnFileDropOff } from "../../wailsjs/runtime/runtime";
 import { clampBubble, defaultBubble, drawBubble, presentationFromElements, revealIndex, timeLabel, updatePresentationElements, validatePresentation } from "./presentation";
 import { presentationRenderer, seekVideo } from "./render";
+import { RECORDING_FPS } from "../recording/format";
 
 export function NarratedReplay({ api, doc, onGenerate, onCancel, onClose }) {
   const capture = () => ({ elements: structuredClone(api.getSceneElements()), files: structuredClone(api.getFiles()), appState: { ...api.getAppState() } });
@@ -149,10 +150,10 @@ export function NarratedReplay({ api, doc, onGenerate, onCancel, onClose }) {
     try {
       exportID.current = await BeginPresentationExport(doc.path, media.token);
       const output = document.createElement("canvas"); output.width = 1920; output.height = 1080;
-      const context = output.getContext("2d", { alpha: false }), frames = Math.ceil(duration * 20);
+      const context = output.getContext("2d", { alpha: false }), frames = Math.ceil(duration * RECORDING_FPS);
       for (let frame = 0; frame < frames; frame++) {
         if (cancelled.current) throw Error("Export cancelled.");
-        const seconds = frame / 20; await seekVideo(source, seconds);
+        const seconds = frame / RECORDING_FPS; await seekVideo(source, seconds);
         const drawing = await renderScene(revealIndex(plan, seconds * 1000, offset));
         if (cancelled.current) throw Error("Export cancelled.");
         context.fillStyle = snapshot.appState.viewBackgroundColor || "#fff"; context.fillRect(0, 0, 1920, 1080);
@@ -200,7 +201,7 @@ export function NarratedReplay({ api, doc, onGenerate, onCancel, onClose }) {
       <input type="range" aria-label="Playback position" min="0" max={duration || 1} step="0.05" value={time} disabled={!duration} onChange={(event) => { video.current.currentTime = Number(event.target.value); setTime(Number(event.target.value)); }} /><span>{timeLabel(time)} / {timeLabel(duration)}</span>
     </fieldset>
     <div className="replay-caption" aria-live="off">{cue?.text || "\u00a0"}</div>
-    <div className="replay-format"><span>1080p</span><span>MP4</span><span>20 fps</span></div>
+    <div className="replay-format"><span>1080p</span><span>MP4</span><span>{RECORDING_FPS} fps</span></div>
     </div>
     <div className="replay-sidebar">
       <fieldset className="replay-controls" disabled={exporting || loading || !!problem}>

@@ -92,7 +92,7 @@ assert.doesNotMatch(fs.readFileSync(path.resolve(__dirname, '../App.jsx'), 'utf8
       } } };
       window.runtime = { EventsOnMultiple: (name, fn) => { window.check.listeners.set(name,fn); return () => window.check.listeners.delete(name); }, Quit: () => {} };
     });
-    await page.goto('http://localhost:5173/editor-check');
+    await page.goto(new URL('/editor-check', process.env.EXBASE_CHECK_URL || 'http://localhost:5173').href);
     await page.getByRole('button',{name:'Setup',exact:true}).click();
     await page.getByRole('checkbox',{name:'Enable Webcam'}).check();
     assert.equal(await page.locator('.webcam-bubble').count(), 0, 'setup shows no webcam bubble');

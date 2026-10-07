@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AbortRecording, AppendRecordingFrame, BeginMP4Recording, StartRecordingMicrophone, PrepareRecording, SaveRecordingVideo, FinishRecording, ReleasePresentationVideo } from "../../wailsjs/go/main/App";
 import { EventsOn, Quit } from "../../wailsjs/runtime/runtime";
 import { recordingFrames } from "./capture";
+import { RECORDING_FPS } from "./format";
 
 export function useRecording(api, doc, onStatus) {
   const [recording, setRecording] = useState({ phase: "idle", mode: null, seconds: 0, webcamEnabled: false });
@@ -111,10 +112,10 @@ export function useRecording(api, doc, onStatus) {
         try {
           state.frameWrite = (async () => { const frame = await state.capture.frame(); if (!state.stopping) await AppendRecordingFrame(state.id, frame); })();
           await state.frameWrite;
-          if (!state.stopping) state.timer = setTimeout(tick, Math.max(0, 50 - (performance.now() - started)));
+          if (!state.stopping) state.timer = setTimeout(tick, Math.max(0, 1000 / RECORDING_FPS - (performance.now() - started)));
         } catch (error) { state.error = String(error); state.frameWrite = Promise.resolve(); stop(); }
       };
-      state.timer = setTimeout(tick, 50);
+      state.timer = setTimeout(tick, 1000 / RECORDING_FPS);
       setRecording({ phase: "recording", mode, seconds: 0, webcamEnabled: webcam });
       state.clock = setInterval(() => setRecording((value) => ({ ...value, seconds: Math.floor((Date.now() - state.started) / 1000) })), 1000);
     } catch (error) {
