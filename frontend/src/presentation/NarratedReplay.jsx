@@ -187,7 +187,7 @@ export function NarratedReplay({ api, doc, onGenerate, onCancel, onClose }) {
     <div className="replay-stage" ref={stage}>
       <canvas ref={canvas} width="1920" height="1080" aria-label="Progressive drawing preview" />
       <div className={`replay-bubble ${bubble.shape}`} style={{ left: `${bubble.x * 100}%`, top: `${bubble.y * 100}%`, width: `${bubble.size * 100}%`, visibility: media ? "visible" : "hidden" }} tabIndex={media ? 0 : -1} role="group" aria-label="Face bubble. Drag or use arrow keys to move." onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag} onKeyDown={bubbleKey}>
-        <video ref={video} src={media?.url} preload="auto" playsInline onLoadedMetadata={(event) => {
+        <video ref={video} src={media?.url} crossOrigin="anonymous" preload="auto" playsInline onLoadedMetadata={(event) => {
           const value = event.currentTarget.duration;
           if (!Number.isFinite(value) || value <= 0) { setError("This video has no valid duration."); return; }
           setDuration(value);

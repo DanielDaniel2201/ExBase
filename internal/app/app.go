@@ -26,6 +26,7 @@ type App struct {
 	presentationMu    sync.Mutex
 	presentationMedia map[string]string
 	recordingMedia    map[string]string
+	presentationURL   string
 }
 
 func NewApp() *App {

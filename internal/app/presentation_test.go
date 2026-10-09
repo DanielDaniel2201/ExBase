@@ -3,13 +3,16 @@ package app
 import (
 	"encoding/json"
 	"exbase/internal/workspace"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSRTAgentToolsSaveTimelineAndRestrictFileReads(t *testing.T) {
@@ -280,5 +283,73 @@ func TestPresentationMediaRangeAndRevocation(t *testing.T) {
 	}
 	if _, err := a.BeginPresentationExport("outside.excalidraw", "selected"); err == nil || !strings.Contains(err.Error(), "document") {
 		t.Fatal("invalid document accepted", err)
+	}
+}
+
+func TestPresentationMediaServerStreamsLargeFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "large.mp4")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const size = 512 << 20
+	err = file.Truncate(size)
+	file.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := NewApp()
+	stop, err := StartPresentationMediaServer(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(stop)
+	video := a.registerPresentationVideo(path)
+	if !strings.HasPrefix(video.URL, "http://127.0.0.1:") {
+		t.Fatal("video still uses the buffered Wails asset server", video.URL)
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	response, err := client.Get(video.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK || response.ContentLength != size || response.Header.Get("Access-Control-Allow-Origin") != "*" {
+		t.Fatal("invalid streaming response", response.Status, response.Header)
+	}
+	if _, err := io.CopyN(io.Discard, response.Body, 1024); err != nil {
+		t.Fatal(err)
+	}
+	runtime.ReadMemStats(&after)
+	if after.TotalAlloc-before.TotalAlloc > 32<<20 {
+		t.Fatal("large video was buffered instead of streamed")
+	}
+	// Leave the large body unread while another request seeks to its end.
+	request, _ := http.NewRequest(http.MethodGet, video.URL, nil)
+	request.Header.Set("Range", "bytes=-10")
+	rangeResponse, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(rangeResponse.Body)
+	rangeResponse.Body.Close()
+	if err != nil || rangeResponse.StatusCode != http.StatusPartialContent || len(body) != 10 {
+		t.Fatal("seek blocked by the streaming request", err, rangeResponse.Status)
+	}
+	a.ReleasePresentationVideo(video.Token)
+	revoked, err := client.Get(video.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revoked.Body.Close()
+	if revoked.StatusCode != http.StatusNotFound {
+		t.Fatal("released video still accessible")
+	}
+	stop()
+	if response, err := client.Get(video.URL); err == nil {
+		response.Body.Close()
+		t.Fatal("media server still runs after shutdown")
 	}
 }

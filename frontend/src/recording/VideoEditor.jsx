@@ -193,7 +193,7 @@ export function VideoEditor({ screenRecording, webcamRecording, document: record
           </button>
         </header>
 
-        <video ref={screenVideoRef} muted={false} preload="auto" playsInline style={{ display: "none" }} />
+        <video ref={screenVideoRef} crossOrigin="anonymous" muted={false} preload="auto" playsInline style={{ display: "none" }} />
         <video ref={webcamVideoRef} preload="auto" playsInline muted style={{ display: "none" }} />
         {loading && (
           <div className="video-editor-loading">

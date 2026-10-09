@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -397,14 +399,30 @@ func (a *App) registerPresentationVideo(path string) PresentationVideo {
 		a.presentationMedia = map[string]string{}
 	}
 	a.presentationMedia[token] = path
+	url := a.presentationURL + "/presentation-media/" + token
 	a.presentationMu.Unlock()
-	return PresentationVideo{Token: token, Name: filepath.Base(path), URL: "/presentation-media/" + token, Path: path}
+	return PresentationVideo{Token: token, Name: filepath.Base(path), URL: url, Path: path}
 }
 func (a *App) ReleasePresentationVideo(token string) {
 	a.presentationMu.Lock()
 	delete(a.presentationMedia, token)
 	delete(a.recordingMedia, token)
 	a.presentationMu.Unlock()
+}
+
+// Wails' Windows asset responses buffer and copy the entire body on the UI thread.
+// A loopback HTTP server lets WebView stream large videos directly from disk.
+func StartPresentationMediaServer(a *App) (func(), error) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		return nil, err
+	}
+	server := &http.Server{Handler: PresentationMediaHandler(a), ReadHeaderTimeout: 5 * time.Second}
+	a.presentationMu.Lock()
+	a.presentationURL = "http://" + listener.Addr().String()
+	a.presentationMu.Unlock()
+	go server.Serve(listener)
+	return func() { server.Close() }, nil
 }
 
 // Only explicitly selected local videos are served. ServeContent supports video seeking.
@@ -438,6 +456,8 @@ func PresentationMediaHandler(a *App) http.Handler {
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
+		// Anonymous cross-origin video must remain readable by the export canvas.
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		http.ServeContent(w, r, info.Name(), info.ModTime(), file)
 	})
 }
