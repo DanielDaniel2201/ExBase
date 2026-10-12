@@ -121,6 +121,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	var guideProvided bool
 	rounds := 0
 	creates := 0
+	truncations := 0
 	waiting := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -155,8 +156,8 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 			if body["thinking"].(map[string]any)["type"] != "enabled" || body["reasoning_effort"] != "high" {
 				t.Error("stable mode must use high thinking")
 			}
-			if _, limited := body["max_tokens"]; limited {
-				t.Error("thinking must use the provider's default output budget")
+			if budget, _ := body["max_tokens"].(float64); budget < aiOutputBudget {
+				t.Error("missing explicit output budget", budget)
 			}
 			if messages[1].(map[string]any)["reasoning_content"] != "previous-reasoning" {
 				t.Error("previous-turn reasoning was lost")
@@ -172,6 +173,10 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 				return
 			}
 			if messages[len(messages)-1].(map[string]any)["content"] == "Truncate" {
+				if body["max_tokens"] != float64(int(aiOutputBudget)<<truncations) {
+					t.Error("truncated output did not increase its budget", body["max_tokens"])
+				}
+				truncations++
 				io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":null,"reasoning_content":"budget exhausted","tool_calls":[{"id":"partial","type":"function","function":{"name":"create_view","arguments":"{\"elements\":\"[\"}"}}]},"finish_reason":"length"}]}`)
 				return
 			}
@@ -261,8 +266,8 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	if _, err := app.AskAI(path, scene, result.CheckpointID, "Truncate", "", history, sessionID, "request-3", "high"); err == nil || !strings.Contains(err.Error(), "truncated") {
 		t.Fatal("truncated output must be rejected", err)
 	}
-	if creates != before {
-		t.Fatal("truncated tool calls must not edit the canvas")
+	if creates != before || truncations != 3 {
+		t.Fatal("truncated calls must retry twice without editing the canvas", truncations)
 	}
 	done := make(chan error, 1)
 	go func() {

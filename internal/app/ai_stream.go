@@ -192,8 +192,9 @@ func decodeAIResponse(reader io.Reader, streaming bool, preview func([]map[strin
 		err := json.NewDecoder(io.LimitReader(reader, 8<<20)).Decode(&response)
 		return response, err
 	}
-	// SSE repeats metadata per token; bound both wire bytes and assembled output.
-	reader = io.LimitReader(reader, 64<<20)
+	// SSE repeats metadata per token. Allow the 384K token budget while bounding
+	// both wire bytes and assembled output.
+	reader = io.LimitReader(reader, 256<<20)
 	outputBytes := 0
 	message := map[string]any{"role": "assistant", "content": "", "reasoning_content": ""}
 	calls := []any{}

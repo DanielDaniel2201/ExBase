@@ -2,7 +2,7 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } f
 import { Ellipsis, MessageCircle, MonitorDot, Plus, Presentation, Send, Square, SquarePlay } from "lucide-react";
 import { flushSync } from "react-dom";
 import { CaptureUpdateAction, convertToExcalidrawElements, exportToBlob, hashString, restore, serializeAsJSON } from "@excalidraw/excalidraw";
-import { AskAI, CancelAI, CreateAISession, LoadAISettings, ResolveAICanvas, LoadPromptTemplates } from "../../wailsjs/go/main/App";
+import { AskAI, PlanPresentation, CancelAI, CreateAISession, LoadAISettings, ResolveAICanvas, LoadPromptTemplates } from "../../wailsjs/go/main/App";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
 import { materializeCanvas, reconcileMermaid, renderMermaid } from "./mermaid";
 import { nextPreviewElements, rebasePreviewEdits, sceneSignature, splitMCPElements } from "./scene";
@@ -193,11 +193,11 @@ export const CanvasChat = forwardRef(function CanvasChat({ doc, api, aiPreview, 
         onSettings(); return false;
       }
       const originalElements = api.getSceneElements();
-      const elements = reconcileMermaid(originalElements);
+      const elements = narrationPrompt === undefined ? reconcileMermaid(originalElements) : originalElements;
       const signature = sceneSignature(originalElements);
       const files = api.getFiles();
       const appState = api.getAppState();
-      const scene = serializeAsJSON(elements, appState, files, "local");
+      const scene = narrationPrompt === undefined ? serializeAsJSON(elements, appState, files, "local") : JSON.stringify({ elements: api.getSceneElementsIncludingDeleted() });
       let screenshot = "";
       if (elements.length) {
         const blob = await exportToBlob({ elements, files, appState: { ...appState, exportBackground: true, exportWithDarkMode: false }, maxWidthOrHeight: 1280, mimeType: "image/png" });
@@ -248,7 +248,10 @@ export const CanvasChat = forwardRef(function CanvasChat({ doc, api, aiPreview, 
           // A partial preview may have unresolved bindings; the final result is validated below.
         }
       });
-      const result = await AskAI(doc.path, scene, checkpoint.current, text, screenshot, narrationPrompt === undefined ? messages.slice(-12) : [], session.current, requestID, mode === "fast" ? "none" : "high");
+      const effort = mode === "fast" ? "none" : "high";
+      const result = narrationPrompt === undefined
+        ? await AskAI(doc.path, scene, checkpoint.current, text, screenshot, messages.slice(-12), session.current, requestID, effort)
+        : await PlanPresentation(doc.path, scene, text, screenshot, session.current, requestID);
       if (id !== request.current) return;
       if (currentAPI.current !== api) throw new Error("The document changed. Send your request again.");
       if (!playback.current && sceneSignature(api.getSceneElements()) !== signature) {
@@ -256,8 +259,8 @@ export const CanvasChat = forwardRef(function CanvasChat({ doc, api, aiPreview, 
         throw new Error("The canvas changed while AI was working. Your edits were kept; send your request again.");
       }
       if (result.elements) {
-        const updated = reconcileMermaid(restoreMCPElements(result.elements), elements);
-        queuePreview(updated);
+        const updated = narrationPrompt === undefined ? reconcileMermaid(restoreMCPElements(result.elements), elements) : (Array.isArray(result.elements) ? result.elements : JSON.parse(result.elements));
+        if (narrationPrompt === undefined) queuePreview(updated);
         if (playback.current?.timer) await new Promise((resolve) => { playback.current.resolve = resolve; });
         if (id !== request.current || currentAPI.current !== api) return;
         // Reset the history baseline synchronously, then commit the complete AI edit once.

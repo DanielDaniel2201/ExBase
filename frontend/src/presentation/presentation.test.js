@@ -1,40 +1,43 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import test from "node:test";
-import { clampBubble, presentationFromElements, revealIndex, revealedElements, updatePresentationElements, validatePresentation } from "./presentation.js";
+import { clampBubble, presentationFromElements, updatePresentationElements, validatePresentation } from "./presentation.js";
 
-test("narration replay reconstructs seeks, offsets and bound label visibility without mutating the scene", () => {
-  const elements = [{ id: "existing" }, { id: "node", boundElements: [{ id: "text" }, { id: "arrow" }] }, { id: "text", containerId: "node" }, { id: "arrow" }];
-  const plan = { version: 1, srtPath: "talk.srt", cues: [{ id: 1, startMs: 500, endMs: 1500, text: "node" }, { id: 2, startMs: 2000, endMs: 3000, text: "arrow" }], baseIds: ["existing"], steps: [{ cueId: 1, atMs: 500, elementIds: ["node", "text"] }, { cueId: 2, atMs: 2000, elementIds: ["arrow"] }] };
-  elements[0].customData = { exbasePresentation: plan };
-  assert.equal(presentationFromElements(elements), plan);
+const elements = [{ id: "a", type: "rectangle" }, { id: "b", type: "rectangle" }];
+const plan = {
+  version: 2, srtPath: "talk.srt", videoPath: "media/talk.mp4",
+  cues: [1, 2, 3, 4].map((id) => ({ id, startMs: (id - 1) * 1000, endMs: id * 1000, text: "topic" })),
+  camera: [{ cueId: 1, atMs: 0, elementIds: ["b"] }, { cueId: 2, atMs: 1000, elementIds: ["a"] }, { cueId: 3, atMs: 2000, elementIds: ["b"] }, { cueId: 4, atMs: 3000, elementIds: [] }],
+};
+
+test("camera-only timelines focus anywhere, revisit regions and ignore legacy reveals", () => {
   assert.equal(validatePresentation(plan, elements), plan);
-  assert.deepEqual(revealedElements(elements, plan, revealIndex(plan, 499)).map(e => e.id), ["existing"]);
-  const shown = revealedElements(elements, plan, revealIndex(plan, 500));
-  assert.deepEqual(shown.map(e => e.id), ["existing", "node", "text"]);
-  assert.deepEqual(shown[1].boundElements, [{ id: "text" }]);
-  assert.equal(elements[1].boundElements.length, 2);
-  assert.equal(revealIndex(plan, 2000), 2);
-  assert.equal(revealIndex(plan, 2000, 100), 1);
-  assert.equal(revealIndex(plan, 0), 0);
-  assert.throws(() => validatePresentation(plan, elements.slice(0, 3)), /missing/);
-  assert.equal(presentationFromElements([{ ...elements[0], isDeleted: true }]), null);
+  const legacy = { ...plan, version: 1, baseIds: [], steps: [{ cueId: 4, atMs: 3000, elementIds: ["b"] }] };
+  assert.equal(validatePresentation(legacy, elements), legacy);
+  assert.equal(validatePresentation(plan, [...elements, { id: "new", type: "text" }]), plan);
+  assert.throws(() => validatePresentation({ ...plan, camera: undefined }, elements), /Generate Pan/);
+  assert.throws(() => validatePresentation(plan, [elements[0]]), /missing/);
+  assert.throws(() => validatePresentation({ ...plan, camera: [plan.camera[0], plan.camera[0]] }, elements), /Invalid camera/);
+  assert.throws(() => validatePresentation({ ...plan, camera: [{ cueId: 2, atMs: -1, elementIds: [] }] }, elements), /Invalid camera/);
+  assert.throws(() => validatePresentation({ ...plan, camera: [{ cueId: 1, atMs: 0, elementIds: ["a", "a"] }] }, elements), /Invalid camera/);
+  assert.throws(() => validatePresentation(plan, [{ ...elements[1], isDeleted: true }, elements[0]]), /missing/);
 });
 
-test("linked narration assets survive serialization and changed subtitles block stale playback", () => {
-  const plan = { version: 1, srtPath: "talk.srt", videoPath: "media/talk.mp4", cues: [{ id: 1, startMs: 0, endMs: 1000, text: "node" }], baseIds: [], steps: [{ cueId: 1, atMs: 0, elementIds: ["node"] }] };
-  const elements = [{ id: "node", version: 1, customData: { keep: true, exbasePresentation: plan } }];
-  const next = updatePresentationElements(elements, { srtPath: "new.srt", needsGeneration: true, visualDescription: "Two blue nodes" });
-  assert.equal(elements[0].customData.exbasePresentation.srtPath, "talk.srt");
+test("linked assets and options survive serialization, changed subtitles block stale playback", () => {
+  const scene = [{ ...elements[0], version: 1, customData: { keep: true, exbasePresentation: plan } }, elements[1]];
+  assert.equal(presentationFromElements(scene), plan);
+  const next = updatePresentationElements(scene, { srtPath: "new.srt", needsGeneration: true, narrationRequirements: "Focus on whole topics" });
+  assert.equal(scene[0].customData.exbasePresentation.srtPath, "talk.srt");
   assert.equal(next[0].customData.keep, true);
   const restored = JSON.parse(JSON.stringify(next));
   assert.equal(presentationFromElements(restored).videoPath, "media/talk.mp4");
   assert.throws(() => validatePresentation(presentationFromElements(restored), restored), /Subtitles changed/);
   const ready = updatePresentationElements(restored, { needsGeneration: false });
-  assert.equal(validatePresentation(presentationFromElements(ready), ready).visualDescription, "Two blue nodes");
+  assert.equal(validatePresentation(presentationFromElements(ready), ready).narrationRequirements, "Focus on whole topics");
   assert.equal(updatePresentationElements(ready, { needsGeneration: false })[0], ready[0]);
+  assert.equal(presentationFromElements([{ ...scene[0], isDeleted: true }]), null);
 });
 
-test("face bubbles stay square and within the 16:9 stage while resizing", () => {
+test("face bubbles stay square and within the stage while resizing", () => {
   const bubble = clampBubble({ x: 2, y: 2, size: 1, shape: "circle" });
   assert.equal(bubble.size, .45);
   assert.ok(bubble.x + bubble.size <= 1);

@@ -3,7 +3,7 @@ import { CaptureUpdateAction } from "@excalidraw/excalidraw";
 import { Circle, Pause, Play, RotateCcw, Square, X } from "lucide-react";
 import { AbortRecording, AppendRecordingFrame, BeginPresentationExport, ChoosePresentationAssets, OpenPresentationAssets, FinishRecording, ReleasePresentationVideo } from "../../wailsjs/go/main/App";
 import { EventsOn, OnFileDrop, OnFileDropOff } from "../../wailsjs/runtime/runtime";
-import { clampBubble, defaultBubble, drawBubble, presentationFromElements, revealIndex, timeLabel, updatePresentationElements, validatePresentation } from "./presentation";
+import { clampBubble, defaultBubble, drawBubble, presentationFromElements, timeLabel, updatePresentationElements, validatePresentation } from "./presentation";
 import { presentationRenderer, seekVideo } from "./render";
 import { RECORDING_FPS } from "../recording/format";
 
@@ -11,13 +11,13 @@ export function NarratedReplay({ api, doc, onGenerate, onCancel, onClose }) {
   const capture = () => ({ elements: structuredClone(api.getSceneElements()), files: structuredClone(api.getFiles()), appState: { ...api.getAppState() } });
   const [snapshot, setSnapshot] = useState(capture);
   const plan = useMemo(() => presentationFromElements(snapshot.elements), [snapshot]);
-  const [setup, setSetup] = useState(() => !plan || !!plan.needsGeneration);
+  const problem = useMemo(() => { try { validatePresentation(plan, snapshot.elements); return ""; } catch (error) { return error.message; } }, [plan, snapshot]);
+  const [setup, setSetup] = useState(() => !plan || !!plan.needsGeneration || !!problem);
   const [srtPath, setSRTPath] = useState(plan?.srtPath || "");
   const [videoPath, setVideoPath] = useState(plan?.videoPath || "");
-  const [description, setDescription] = useState(plan?.visualDescription || "");
+  const [description, setDescription] = useState(plan?.narrationRequirements || "");
   const [generating, setGenerating] = useState(false), [loading, setLoading] = useState(false);
   const [mediaError, setMediaError] = useState("");
-  const problem = useMemo(() => { try { validatePresentation(plan, snapshot.elements); return ""; } catch (error) { return error.message; } }, [plan, snapshot]);
   const renderScene = useMemo(() => problem ? null : presentationRenderer(snapshot, plan), [snapshot, plan, problem]);
   const [bubble, setBubble] = useState(() => clampBubble({ ...defaultBubble, ...plan?.bubble }));
   const offset = Number.isFinite(plan?.offsetMs) ? Math.max(-60000, Math.min(60000, plan.offsetMs)) : 0;
@@ -32,6 +32,7 @@ export function NarratedReplay({ api, doc, onGenerate, onCancel, onClose }) {
   busy.current = exporting || generating || loading;
   const renderVersion = useRef(0), drag = useRef(null);
   const cues = Array.isArray(plan?.cues) ? plan.cues : [];
+  const empty = !snapshot.elements.some((e) => !e.isDeleted && !["frame", "magicframe"].includes(e.type));
   const tooShort = duration > 0 && Math.max(...cues.map((cue) => cue.endMs + offset)) > duration * 1000 + 500;
 
   useEffect(() => {
@@ -52,17 +53,17 @@ export function NarratedReplay({ api, doc, onGenerate, onCancel, onClose }) {
   }), []);
   useEffect(() => {
     if (!renderScene) return;
-    let active = true, animation, previous = -1, clock = 0;
+    let active = true, animation, previous = -1, clock = 0, rendering = false;
     const tick = (now) => {
       if (!active) return;
-      const seconds = video.current?.currentTime || 0, index = revealIndex(plan, seconds * 1000, offset);
-      if (index !== previous) {
-        previous = index;
+      const seconds = video.current?.currentTime || 0;
+      if (!busy.current && !rendering && seconds !== previous) {
+        previous = seconds; rendering = true;
         const version = ++renderVersion.current;
-        renderScene(index).then((image) => {
+        renderScene(seconds * 1000, offset).then((image) => {
           if (!active || version !== renderVersion.current || disposed.current) return;
           const context = canvas.current.getContext("2d"); context.clearRect(0, 0, 1920, 1080); context.drawImage(image, 0, 0, 1920, 1080);
-        }).catch((error) => { if (active) setError(String(error)); });
+        }).catch((error) => { if (active) setError(String(error)); }).finally(() => { rendering = false; });
       }
       if (now - clock > 100) { clock = now; setTime(seconds); }
       animation = requestAnimationFrame(tick);
@@ -73,7 +74,7 @@ export function NarratedReplay({ api, doc, onGenerate, onCancel, onClose }) {
 
   function persistOptions(changes = {}) {
     const elements = api.getSceneElementsIncludingDeleted();
-    const next = updatePresentationElements(elements, { bubble, offsetMs: offset, srtPath, videoPath, visualDescription: description, ...changes });
+    const next = updatePresentationElements(elements, { bubble, offsetMs: offset, srtPath, videoPath, narrationRequirements: description, reasoningEffort: "high", ...changes });
     if (next.some((element, i) => element !== elements[i])) api.updateScene({ elements: next, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
   }
   function close() { if (!exporting && !generating && !loading) { video.current?.pause(); persistOptions(); onClose(); } }
@@ -109,11 +110,10 @@ export function NarratedReplay({ api, doc, onGenerate, onCancel, onClose }) {
     } finally { if (!disposed.current && job === assetJob.current) setLoading(false); }
   }
   async function generate() {
-    if (busy.current || !srtPath || !media || !duration) return;
+    if (busy.current || empty || !srtPath || !media || !duration) return;
     video.current?.pause(); setGenerating(true); setError(""); setSaved("");
     try {
-      // The user supplies only narration and a visual description. Tool workflow is host-owned.
-      const ready = await onGenerate(`Create an editable diagram illustrating this narration.\nSRT file: ${srtPath}\n\nVisual description:\n${description.trim() || "A clear, compact diagram showing the main ideas and their relationships."}`);
+      const ready = await onGenerate(`Plan coarse Pan and Zoom for the existing drawing.\nSRT file: ${srtPath}\n\nNarration requirements:\n${description.trim() || "Follow the narration and focus on the region being discussed."}`);
       if (disposed.current) return;
       if (!ready) throw Error("Generation cancelled.");
       const generated = presentationFromElements(api.getSceneElements());
@@ -154,7 +154,7 @@ export function NarratedReplay({ api, doc, onGenerate, onCancel, onClose }) {
       for (let frame = 0; frame < frames; frame++) {
         if (cancelled.current) throw Error("Export cancelled.");
         const seconds = frame / RECORDING_FPS; await seekVideo(source, seconds);
-        const drawing = await renderScene(revealIndex(plan, seconds * 1000, offset));
+        const drawing = await renderScene(seconds * 1000, offset);
         if (cancelled.current) throw Error("Export cancelled.");
         context.fillStyle = snapshot.appState.viewBackgroundColor || "#fff"; context.fillRect(0, 0, 1920, 1080);
         context.drawImage(drawing, 0, 0, 1920, 1080); drawBubble(context, source, bubble);
@@ -172,20 +172,23 @@ export function NarratedReplay({ api, doc, onGenerate, onCancel, onClose }) {
 
   const cue = cues.find((cue) => time * 1000 >= cue.startMs + offset && time * 1000 < cue.endMs + offset);
   const endDrag = () => { drag.current = null; };
-  const status = error || mediaError || (generating ? "Generating the drawing…" : loading ? "Opening video…" : setup ? "" : problem || (tooShort ? "The video is shorter than the subtitles." : exporting ? `Exporting… ${progress}%` : saved));
+  const status = error || mediaError || (generating ? "Planning the animation…" : loading ? "Opening video…" : setup ? "" : problem || (tooShort ? "The video is shorter than the subtitles." : exporting ? `Exporting… ${progress}%` : saved));
   return <dialog ref={dialog} className={`narrated-replay ${setup ? "replay-setup" : ""}`} aria-labelledby="replay-title" onCancel={(event) => { event.preventDefault(); close(); }} onClick={(event) => { if (event.target === event.currentTarget) close(); }}>
     <header className="replay-heading"><strong id="replay-title">Narrated replay</strong><button type="button" className="replay-close" aria-label="Close narrated replay" onClick={close} disabled={exporting || generating || loading}><X strokeWidth={1.5} aria-hidden="true" /></button></header>
     <fieldset className="replay-assets" hidden={!setup} disabled={exporting || generating || loading}>
       <div className="replay-file-row"><strong>Original video</strong><span title={videoPath}>{media?.name || videoPath.split(/[\\/]/).pop() || "No video selected"}{mediaError && <small className="error" role="alert">{mediaError}</small>}</span><button type="button" onClick={() => loadAssets(() => ChoosePresentationAssets(doc.path, "video"))}>{mediaError ? "Locate video" : videoPath ? "Change video" : "Choose video"}</button></div>
       <div className="replay-file-row"><strong>SRT subtitles</strong><span title={srtPath}>{srtPath.split(/[\\/]/).pop() || "No subtitles selected"}</span><button type="button" onClick={() => loadAssets(() => ChoosePresentationAssets(doc.path, "srt"))}>{srtPath ? "Change SRT" : "Choose SRT"}</button></div>
+      <p className="replay-note">{empty ? "Prepare a drawing first. Pan / Zoom follows the narration on your existing canvas." : "Pan / Zoom follows the narration. All drawing elements stay visible."}</p>
       <div className="replay-drop-zone">Drop a video and an SRT file here</div>
-      <label className="replay-description">Visual description <span>Optional</span><textarea rows={3} maxLength={8000} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Describe the scene, layout, colors, and ideas to highlight…" /></label>
-      {plan?.needsGeneration && <p className="replay-note">Subtitles changed. Generate again to update the drawing and its timing.</p>}
+      <div className="replay-file-row"><strong>Thinking mode</strong><span>Stable · Thinking on</span></div>
+      <label className="replay-description">Narration requirements <span>Optional</span><textarea rows={3} maxLength={8000} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Describe the order or regions you want to emphasize…" /></label>
+      {problem && plan && !plan.needsGeneration && <p className="replay-note error" role="alert">{problem}</p>}
+      {plan?.needsGeneration && <p className="replay-note">Subtitles changed. Generate again to update Pan / Zoom timing.</p>}
     </fieldset>
     <div className="replay-layout" hidden={setup}>
     <div className="replay-main">
     <div className="replay-stage" ref={stage}>
-      <canvas ref={canvas} width="1920" height="1080" aria-label="Progressive drawing preview" />
+      <canvas ref={canvas} width="1920" height="1080" aria-label="Pan and Zoom drawing preview" />
       <div className={`replay-bubble ${bubble.shape}`} style={{ left: `${bubble.x * 100}%`, top: `${bubble.y * 100}%`, width: `${bubble.size * 100}%`, visibility: media ? "visible" : "hidden" }} tabIndex={media ? 0 : -1} role="group" aria-label="Face bubble. Drag or use arrow keys to move." onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag} onKeyDown={bubbleKey}>
         <video ref={video} src={media?.url} crossOrigin="anonymous" preload="auto" playsInline onLoadedMetadata={(event) => {
           const value = event.currentTarget.duration;
@@ -209,12 +212,13 @@ export function NarratedReplay({ api, doc, onGenerate, onCancel, onClose }) {
         <label className="replay-size">Size <input type="range" aria-label="Face bubble size" min="8" max="45" value={Math.round(bubble.size * 100)} onChange={(event) => setBubble((value) => clampBubble({ ...value, size: Number(event.target.value) / 100 }))} /></label>
       </fieldset>
       <div className="replay-export">
+        <button type="button" onClick={() => { video.current?.pause(); setPlaying(false); setSetup(true); }} disabled={exporting || loading}>Edit narration</button>
         {!media && !loading && <button type="button" onClick={() => loadAssets(() => ChoosePresentationAssets(doc.path, "video"))}>Locate video</button>}
         {exporting ? <button type="button" onClick={() => { cancelled.current = true; }} disabled={progress === 100}>Cancel export</button> : <button type="button" onClick={exportVideo} disabled={!duration || loading || !!problem || tooShort}>Export MP4</button>}
         <div className={`replay-status ${error || mediaError || problem || tooShort ? "error" : ""}`} role={error || mediaError || problem || tooShort ? "alert" : "status"}>{status}</div>
       </div>
     </div>
     </div>
-    <footer className="replay-footer" hidden={!setup}><span className={error || mediaError ? "error" : ""} role={error || mediaError ? "alert" : "status"}>{status}</span>{generating ? <button type="button" onClick={onCancel}>Cancel generation</button> : <><button type="button" hidden={!plan || !!problem} disabled={loading} onClick={() => { persistOptions(); setSetup(false); }}>Back to preview</button><button type="button" onClick={generate} disabled={!srtPath || !media || !duration || loading}>{plan ? "Regenerate replay" : "Generate replay"}</button></>}</footer>
+    <footer className="replay-footer" hidden={!setup}><span className={error || mediaError ? "error" : ""} role={error || mediaError ? "alert" : "status"}>{status}</span>{generating ? <button type="button" onClick={onCancel}>Cancel generation</button> : <><button type="button" hidden={!plan || !!problem} disabled={loading} onClick={() => { persistOptions(); setSetup(false); }}>Back to preview</button><button type="button" onClick={generate} disabled={empty || !srtPath || !media || !duration || loading}>{plan ? "Regenerate Pan / Zoom" : "Generate Pan / Zoom"}</button></>}</footer>
   </dialog>;
 }

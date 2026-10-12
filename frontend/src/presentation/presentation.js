@@ -14,31 +14,21 @@ export function updatePresentationElements(elements, changes) {
 
 export function validatePresentation(plan, elements) {
   if (plan?.needsGeneration) throw Error("Subtitles changed. Generate the narrated replay again.");
-  if (plan?.version !== 1 || !plan.srtPath || !Array.isArray(plan.cues) || !plan.cues.length || !Array.isArray(plan.steps) || !plan.steps.length || !Array.isArray(plan.baseIds)) throw Error("This canvas has an invalid narration timeline. Generate it again from SRT.");
-  const ids = new Set(elements.filter((e) => !e.isDeleted).map((e) => e.id));
-  for (const cue of plan.cues) if (!Number.isInteger(cue.id) || !Number.isFinite(cue.startMs) || !Number.isFinite(cue.endMs) || cue.startMs < 0 || cue.endMs <= cue.startMs || typeof cue.text !== "string") throw Error("This canvas has invalid subtitles. Generate the timeline again.");
-  const covered = new Set(plan.baseIds);
-  let previous = -1;
-  for (const step of plan.steps) {
-    if (!Number.isFinite(step.atMs) || step.atMs < previous || !Array.isArray(step.elementIds) || !step.elementIds.length || !plan.cues.some((cue) => cue.id === step.cueId)) throw Error("This canvas has an invalid reveal group. Generate the timeline again.");
-    for (const id of step.elementIds) { if (!ids.has(id) || covered.has(id)) throw Error("The drawing changed and a timed element is missing or repeated. Generate the timeline again."); covered.add(id); }
-    previous = step.atMs;
+  if (![1, 2].includes(plan?.version) || !plan.srtPath || !Array.isArray(plan.cues) || !plan.cues.length) throw Error("This canvas has an invalid narration timeline. Generate it again from SRT.");
+  for (let i = 0; i < plan.cues.length; i++) {
+    const cue = plan.cues[i];
+    if (cue.id !== i + 1 || !Number.isFinite(cue.startMs) || !Number.isFinite(cue.endMs) || cue.startMs < 0 || cue.endMs <= cue.startMs || typeof cue.text !== "string" || (i > 0 && cue.startMs < plan.cues[i - 1].startMs)) throw Error("This canvas has invalid subtitles. Generate the timeline again.");
   }
-  for (const id of plan.baseIds) if (!ids.has(id)) throw Error("A baseline element is missing. Generate the timeline again.");
-  if ([...ids].some((id) => !covered.has(id))) throw Error("The drawing has new elements without reveal times. Generate the timeline again.");
+  if (!Array.isArray(plan.camera) || !plan.camera.length) throw Error("Generate Pan / Zoom again for this canvas.");
+  const drawable = new Set(elements.filter((e) => !e.isDeleted && !["frame", "magicframe"].includes(e.type)).map((e) => e.id));
+  let lastCue = 0, lastTime = -1;
+  for (const shot of plan.camera) {
+    const cue = plan.cues.find((cue) => cue.id === shot.cueId);
+    if (!cue || shot.cueId <= lastCue || !Number.isFinite(shot.atMs) || shot.atMs < cue.startMs || shot.atMs >= cue.endMs || shot.atMs <= lastTime || !Array.isArray(shot.elementIds) || new Set(shot.elementIds).size !== shot.elementIds.length) throw Error("Invalid camera group. Generate Pan / Zoom again.");
+    for (const id of shot.elementIds) if (!drawable.has(id)) throw Error("A camera target is missing. Generate Pan / Zoom again.");
+    lastCue = shot.cueId; lastTime = shot.atMs;
+  }
   return plan;
-}
-
-export function revealIndex(plan, timeMs, offsetMs = 0) {
-  let index = 0;
-  while (index < plan.steps.length && plan.steps[index].atMs + offsetMs <= timeMs) index++;
-  return index;
-}
-
-export function revealedElements(elements, plan, index) {
-  const ids = new Set(plan.baseIds);
-  for (const step of plan.steps.slice(0, index)) for (const id of step.elementIds) ids.add(id);
-  return elements.filter((e) => !e.isDeleted && ids.has(e.id)).map((e) => ({ ...e, boundElements: e.boundElements?.filter((bound) => ids.has(bound.id)) || null }));
 }
 
 export const defaultBubble = { x: 0.78, y: 0.04, size: 0.18, shape: "rounded" };

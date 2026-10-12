@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -73,10 +72,10 @@ func TestSRTAgentToolsSaveTimelineAndRestrictFileReads(t *testing.T) {
 				args = map[string]any{"elements": `[{"id":"new","type":"rectangle","x":100,"y":100,"width":100,"height":80}]`}
 			case 3:
 				name = "set_presentation_timeline"
-				args = map[string]any{"steps": []any{map[string]any{"cueId": 1, "elementIds": []string{"missing"}}}}
+				args = map[string]any{"camera": []any{map[string]any{"cueId": 1, "elementIds": []string{"missing"}}}}
 			case 4:
 				name = "set_presentation_timeline"
-				args = map[string]any{"steps": []any{map[string]any{"cueId": 1, "elementIds": []string{"new"}}}}
+				args = map[string]any{"camera": []any{map[string]any{"cueId": 1, "elementIds": []string{"new"}}}}
 			default:
 				json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"role": "assistant", "content": "Ready"}, "finish_reason": "stop"}}})
 				return
@@ -150,7 +149,7 @@ func TestSRTAgentToolsSaveTimelineAndRestrictFileReads(t *testing.T) {
 	}
 	custom := final[0]["customData"].(map[string]any)
 	metadata := custom["exbasePresentation"].(map[string]any)
-	if custom["keep"] != true || metadata["srtPath"] != "talk.srt" || metadata["steps"].([]any)[0].(map[string]any)["atMs"] != float64(500) {
+	if custom["keep"] != true || metadata["srtPath"] != "talk.srt" || metadata["camera"].([]any)[0].(map[string]any)["atMs"] != float64(500) {
 		t.Fatal("association or existing metadata lost", custom)
 	}
 	// A plain model reply must never count as successful regeneration of an old plan.
@@ -209,19 +208,7 @@ func TestPresentationAssetPathsRestoreAndMove(t *testing.T) {
 	}
 }
 
-func TestNarrationRegenerationKeepsUnrelatedElements(t *testing.T) {
-	plan := PresentationTimeline{Version: 1, Steps: []RevealStep{{CueID: 1, ElementIDs: []string{"node", "label"}}}}
-	elements := []map[string]any{
-		{"id": "baseline", "customData": map[string]any{"exbasePresentation": plan, "keep": true}},
-		{"id": "node"}, {"id": "label", "containerId": "node"}, {"id": "unrelated"},
-	}
-	base := narrationBaseElements(elements)
-	if len(base) != 2 || base[0]["id"] != "baseline" || base[1]["id"] != "unrelated" || len(elements) != 4 {
-		t.Fatal("regeneration changed unrelated elements or mutated original scene", base, elements)
-	}
-}
-
-func TestSRTAndRevealPlan(t *testing.T) {
+func TestSRTAndCameraPlan(t *testing.T) {
 	cues, err := parseSRT("\ufeff1\r\n00:00:00,000 --> 00:00:01,000\r\nNode\r\nlabel\r\n\r\n2\r\n00:00:01,000 --> 00:00:01,100\r\nConnection\r\n")
 	if err != nil || len(cues) != 2 || cues[0].Text != "Node\nlabel" {
 		t.Fatal(cues, err)
@@ -232,18 +219,21 @@ func TestSRTAndRevealPlan(t *testing.T) {
 		}
 	}
 	elements := []map[string]any{{"id": "old", "type": "rectangle"}, {"id": "a", "type": "rectangle"}, {"id": "label", "type": "text", "containerId": "a"}, {"id": "b", "type": "rectangle"}, {"id": "edge", "type": "arrow", "startBinding": map[string]any{"elementId": "a"}, "endBinding": map[string]any{"elementId": "b"}}}
-	steps := []RevealStep{{CueID: 1, ElementIDs: []string{"a"}}, {CueID: 2, ElementIDs: []string{"b"}}, {CueID: 2, ElementIDs: []string{"edge"}}}
-	plan, err := resolveRevealPlan(PresentationTimeline{Version: 1, SRTPath: "talk.srt", Cues: cues}, steps, elements, map[string]bool{"old": true})
-	if err != nil || len(plan.Steps[0].ElementIDs) != 2 || plan.Steps[1].AtMS != 1000 || plan.Steps[2].AtMS != 1050 || !reflect.DeepEqual(plan.BaseIDs, []string{"old"}) {
+	camera := []CameraStep{{CueID: 1, ElementIDs: []string{"b"}}, {CueID: 2, ElementIDs: []string{"a", "edge"}}}
+	plan, err := resolveCameraPlan(PresentationTimeline{Version: 2, SRTPath: "talk.srt", Cues: cues}, camera, elements)
+	if err != nil || plan.Camera[0].AtMS != 0 || plan.Camera[1].AtMS != 1000 {
 		t.Fatal(plan, err)
 	}
-	bad := []RevealStep{{CueID: 1, ElementIDs: []string{"a", "edge"}}, {CueID: 2, ElementIDs: []string{"b"}}}
-	if _, err := resolveRevealPlan(plan, bad, elements, map[string]bool{"old": true}); err == nil {
-		t.Fatal("connection shown before endpoint")
-	}
-	bad = []RevealStep{{CueID: 1, ElementIDs: []string{"missing"}}}
-	if _, err := resolveRevealPlan(plan, bad, elements, nil); err == nil {
-		t.Fatal("unknown ID accepted")
+	for _, bad := range [][]CameraStep{
+		{{CueID: 1, ElementIDs: []string{"missing"}}},
+		{{CueID: 1, ElementIDs: []string{"a", "a"}}},
+		{{CueID: 2, ElementIDs: []string{"a"}}, {CueID: 1, ElementIDs: []string{"b"}}},
+		{{CueID: 1}},
+		{{CueID: 3, ElementIDs: []string{}}},
+	} {
+		if _, err := resolveCameraPlan(plan, bad, elements); err == nil {
+			t.Fatal("invalid camera plan accepted", bad)
+		}
 	}
 	elements[0]["customData"] = map[string]any{"keep": true}
 	attachPresentation(elements, plan)
