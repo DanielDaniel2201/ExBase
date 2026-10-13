@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ChevronRight, Eye, EyeOff, Lock } from "lucide-react";
-import { LoadAISettings, SaveAISettings, LoadPromptTemplates, SavePromptTemplates, SaveGeneralSettings } from "../../wailsjs/go/main/App";
+import { ChevronRight, Lock } from "lucide-react";
+import { LoadPromptTemplates, SavePromptTemplates, SaveGeneralSettings } from "../../wailsjs/go/main/App";
+import { AIProviders } from "./AIProviders";
 
 function RecordingAreaPreview({ mode }) {
   const entire = mode === "app";
@@ -42,10 +43,6 @@ function TemplateEditor({ template, isNew, saving, error, onSave, onDelete, onCl
 
 export function SettingsModal({ onClose, generalSettings, onGeneralSettings, recordingActive = false }) {
   const dialog = useRef();
-  const savedKey = useRef("");
-  const savePromise = useRef(null);
-  const [key, setKey] = useState("");
-  const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [templates, setTemplates] = useState([]);
@@ -57,33 +54,12 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
 
   useEffect(() => {
     dialog.current.showModal();
-    Promise.all([LoadAISettings(), LoadPromptTemplates()]).then(([settings, templates]) => {
-      savedKey.current = settings.apiKey || "";
-      setKey(savedKey.current);
+    LoadPromptTemplates().then((templates) => {
       setTemplates(templates);
       savedTemplates.current = JSON.stringify(templates);
       setLoaded(true);
     }).catch((error) => setError(String(error)));
   }, []);
-
-  async function save() {
-    if (!loaded) return false;
-    const value = key.trim();
-    if (value === savedKey.current) return true;
-    if (!value && savedKey.current) { setError("Enter your DeepSeek API key"); return false; }
-    if (savePromise.current) return savePromise.current;
-    setSaving(true); setError("");
-    savePromise.current = (async () => {
-      if (value !== savedKey.current) {
-        await SaveAISettings(value, "high");
-        savedKey.current = value; setKey(value);
-      }
-      return true;
-    })()
-      .catch((error) => { setError(String(error)); return false; })
-      .finally(() => { setSaving(false); savePromise.current = null; });
-    return savePromise.current;
-  }
 
   async function saveTemplates(nextTemplates) {
     if (!loaded || saving) return false;
@@ -100,10 +76,8 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
     finally { setSaving(false); }
   }
 
-  async function close() {
-    if (generalSaving) return;
-    if (!loaded) { onClose(); return; }
-    if (await save()) onClose();
+  function close() {
+    if (!generalSaving && !saving) onClose();
   }
 
   async function saveGeneral(patch) {
@@ -117,10 +91,10 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
   return <dialog ref={dialog} className="settings-modal" onCancel={(event) => { event.preventDefault(); close(); }} onClick={(event) => { if (event.target === dialog.current) close(); }} aria-labelledby="settings-title">
     <header className="settings-heading">
       <h2 id="settings-title">Settings</h2>
-      <button type="button" className="settings-close" onClick={close} aria-label="Close settings">×</button>
+      <button type="button" className="settings-close" disabled={saving || generalSaving} onClick={close} aria-label="Close settings">×</button>
     </header>
     <div className="settings-content">
-      <nav className="settings-nav" aria-label="Settings sections">{["General", "AI"].map((name) => <button type="button" key={name} className={section === name ? "active" : ""} aria-current={section === name ? "page" : undefined} onClick={() => setSection(name)}>{name}</button>)}</nav>
+      <nav className="settings-nav" aria-label="Settings sections">{["General", "AI"].map((name) => <button type="button" key={name} disabled={saving} className={section === name ? "active" : ""} aria-current={section === name ? "page" : undefined} onClick={() => setSection(name)}>{name}</button>)}</nav>
       <div className="settings-panel" inert={generalSaving ? "" : undefined} aria-busy={generalSaving}>
         {section === "General" ? <>
           <h3 className="general-settings-heading">Slides</h3>
@@ -138,16 +112,7 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
           <label className="general-toggle"><span><strong>Keep recording on cancel</strong><small>When enabled, canceling Save keeps the video in ~/.exbase/recordings. When disabled, it discards the video.</small></span><input type="checkbox" role="switch" aria-label="Keep recording on cancel" checked={!!generalSettings?.keepRecordingOnCancel} disabled={!generalSettings?.recordingEnabled || recordingActive} onChange={(event) => saveGeneral({ keepRecordingOnCancel: event.target.checked })} /></label>
           {recordingActive && <p className="template-help">Stop recording to change recording settings.</p>}
         </> : <>
-        <h3>Model Provider</h3>
-        <label htmlFor="deepseek-key">DeepSeek API Key</label>
-        <div className="api-key-field">
-          <input id="deepseek-key" type={showKey ? "text" : "password"} value={key} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setKey(event.target.value)} onBlur={() => save()} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} placeholder="Enter your DeepSeek API key" autoComplete="off" spellCheck={false} disabled={!loaded || saving} />
-          <button type="button" onClick={() => setShowKey(!showKey)} aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}>
-            {showKey
-              ? <EyeOff aria-hidden="true" />
-              : <Eye aria-hidden="true" />}
-          </button>
-        </div>
+        <AIProviders saving={saving} onSaving={setSaving} />
         <section className="prompt-template-settings" aria-labelledby="prompt-template-title">
           <div className="template-heading"><h3 id="prompt-template-title">Prompt Templates</h3><button type="button" disabled={!loaded || saving} onClick={() => {
             let name = "New template", number = 2;

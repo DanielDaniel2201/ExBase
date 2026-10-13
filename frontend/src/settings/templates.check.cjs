@@ -16,7 +16,7 @@ const path = require('node:path');
         Workspaces: async () => ({ current: 'D:\\check', folders: ['D:\\check'] }),
         ReadDirectory: async () => [{ path: doc.path, name: 'Canvas.excalidraw', isDir: false }], OpenDocument: async () => doc,
         LoadGeneralSettings: async () => ({ slidesEnabled: false, recordingEnabled: false }), Save: async () => {},
-        LoadAISettings: async () => ({ hasAPIKey: true, apiKey: 'fixture' }),
+        LoadAISettings: async () => ({ providers: [{ id: 'deepseek', name: 'DeepSeek', baseURL: 'https://api.deepseek.com', model: 'deepseek-flash', apiKey: 'fixture' }], activeProviderID: 'deepseek', hasAPIKey: true, apiKey: 'fixture' }),
         LoadPromptTemplates: async () => JSON.parse(localStorage.getItem('check-templates') || JSON.stringify(initial)),
         SavePromptTemplates: async templates => {
           if (window.check.fail) { window.check.fail = false; throw Error('Cannot save templates'); }
@@ -26,7 +26,7 @@ const path = require('node:path');
           window.check.saves++;
           localStorage.setItem('check-templates', JSON.stringify(templates));
         },
-        SaveAISettings: async () => { throw Error('Unexpected API key save'); },
+        SaveAIProviders: async () => { throw Error('Unexpected provider save'); },
       } } };
       window.runtime = new Proxy({}, { get: () => () => {} });
     });
@@ -94,13 +94,15 @@ const path = require('node:path');
     assert.equal(await page.getByRole('option').count(), 2);
     await composer.press('Escape');
     await openSettings();
-    // A blank, unsaved API key must not prevent template deletion.
-    await page.getByLabel('DeepSeek API Key', { exact: true }).fill('');
+    // Discarding an API key draft must not save credentials or block template deletion.
+    await page.getByRole('button', { name: 'Edit provider', exact: true }).click();
+    const providerEditor = page.getByRole('dialog', { name: 'Edit Provider', exact: true });
+    await providerEditor.getByLabel('API Key', { exact: true }).fill('');
+    await providerEditor.getByRole('button', { name: 'Cancel', exact: true }).click();
     await openTemplate('My replay');
     await editor().getByRole('button', { name: 'Delete template', exact: true }).click();
     await editor().waitFor({ state: 'hidden' });
     assert.deepEqual(await saved(), [{ name: 'PPT', body: 'Draw {{topic}}' }]);
-    await page.getByLabel('DeepSeek API Key', { exact: true }).fill('fixture');
     await page.getByRole('button', { name: 'Close settings', exact: true }).click();
     await composer.fill('/');
     await page.getByRole('option', { name: 'PPT', exact: true }).waitFor();

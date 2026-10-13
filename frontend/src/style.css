@@ -92,6 +92,28 @@ nav > .tree { padding-left: 8px; }
 .general-toggle input:disabled { opacity: .5; cursor: default; }
 .settings-panel { min-width: 0; padding: 24px; overflow-y: auto; }
 .prompt-template-settings { margin-top: 24px; }
+.provider-selection { display: flex; align-items: center; gap: 6px; }
+.provider-selection > button { display: grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #666; cursor: pointer; }
+.provider-selection > button:hover { background: #e8e8ea; }
+.provider-selection svg { width: 16px; height: 16px; flex-shrink: 0; }
+.provider-picker { position: relative; flex: 1; min-width: 0; }
+.provider-trigger { display: flex; align-items: center; gap: 8px; width: 100%; height: 36px; padding: 0 10px; border: 1px solid #ccc; border-radius: 6px; background: #f7f7f8; color: inherit; text-align: left; cursor: pointer; }
+.provider-trigger:hover, .provider-trigger[aria-expanded="true"] { background: #eeeef0; border-color: #aaa; }
+.provider-trigger:focus-visible { outline: 2px solid #888; outline-offset: 2px; }
+.provider-trigger:disabled { opacity: .5; cursor: default; }
+.provider-trigger span, .provider-menu span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.provider-picker small { color: #888; font-size: 11px; }
+.provider-trigger svg { color: #777; }
+.provider-menu { position: absolute; z-index: 20; top: calc(100% + 5px); left: 0; right: 0; max-height: 200px; overflow-y: auto; padding: 4px; border: 1px solid #ccc; border-radius: 7px; background: #f7f7f8; box-shadow: 0 8px 24px #0002; }
+.provider-menu button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 6px 8px; border: 0; border-radius: 4px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.provider-menu button.active { background: #e5e5e7; }
+.provider-menu button svg { color: #666; }
+.provider-edit-modal { width: 520px; min-width: min(520px, calc(100vw - 32px)); height: fit-content; }
+.provider-editor fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.provider-editor label { display: block; }
+.provider-editor input[readonly] { background: #eee; color: #666; }
+.provider-editor .api-key-field input { margin-bottom: 0; border: 0; }
+.provider-editor .template-help { margin-top: 0; }
 .template-heading, .template-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .settings-panel .template-heading h3 { margin: 0; }
 .template-heading button, .template-actions button { padding: 5px 9px; border: 1px solid #ccc; border-radius: 5px; background: #f7f7f8; color: inherit; font: inherit; cursor: pointer; }

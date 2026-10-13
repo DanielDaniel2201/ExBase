@@ -99,9 +99,12 @@ type routedTransport struct {
 }
 
 func (r routedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Host == "provider.example" && req.URL.Path != "/v1/chat/completions" {
+		return nil, errors.New("custom provider Base URL was not used")
+	}
 	clone := req.Clone(req.Context())
 	endpoint := r.serverURL + "/mcp"
-	if req.URL.Host == "api.deepseek.com" {
+	if req.URL.Host == "api.deepseek.com" || req.URL.Host == "provider.example" {
 		endpoint = r.serverURL + "/chat"
 	}
 	local, _ := http.NewRequestWithContext(req.Context(), req.Method, endpoint, req.Body)
@@ -115,6 +118,14 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	t.Setenv("HOME", home)
 	app := &App{Workspace: workspace.New(t.TempDir())}
 	if _, err := app.SaveAISettings("test-key", "none"); err != nil {
+		t.Fatal(err)
+	}
+	settings, err := app.LoadAISettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	custom := AIProvider{ID: "custom", Name: "Custom", BaseURL: "https://provider.example/v1", Model: "provider/deepseek-v4.1-flash", APIKey: "custom-key"}
+	if _, err := app.SaveAIProviders(append(settings.Providers, custom), custom.ID); err != nil {
 		t.Fatal(err)
 	}
 	var synced bool
@@ -131,7 +142,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 			return
 		}
 		if r.URL.Path == "/chat" {
-			if r.Header.Get("Authorization") != "Bearer test-key" {
+			if r.Header.Get("Authorization") != "Bearer custom-key" {
 				t.Error("missing API authentication")
 			}
 			if !synced {
@@ -150,7 +161,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 			if tools := body["tools"].([]any); len(tools) != 5 || tools[0].(map[string]any)["function"].(map[string]any)["name"] != "create_view" || tools[1].(map[string]any)["function"].(map[string]any)["name"] != "draw_mermaid" || tools[2].(map[string]any)["function"].(map[string]any)["name"] != "read_canvas" {
 				t.Error("model should not need a read_me round")
 			}
-			if body["model"] != "deepseek-flash" {
+			if body["model"] != custom.Model {
 				t.Error("wrong model")
 			}
 			if body["thinking"].(map[string]any)["type"] != "enabled" || body["reasoning_effort"] != "high" {
@@ -164,7 +175,7 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 			}
 			if messages[len(messages)-1].(map[string]any)["content"] == "Fail" {
 				w.WriteHeader(http.StatusUnauthorized)
-				io.WriteString(w, `{"error":{"message":"invalid test-key"}}`)
+				io.WriteString(w, `{"error":{"message":"invalid custom-key"}}`)
 				return
 			}
 			if messages[len(messages)-1].(map[string]any)["content"] == "Wait" {
@@ -299,7 +310,10 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 			t.Errorf("trace missing %s", expected)
 		}
 	}
-	if strings.Contains(string(data), "test-key") {
+	if !strings.Contains(string(data), `"provider_id":"custom"`) || !strings.Contains(string(data), custom.Model) || !strings.Contains(string(data), custom.BaseURL) {
+		t.Fatal("trace did not identify the selected provider")
+	}
+	if strings.Contains(string(data), "test-key") || strings.Contains(string(data), "custom-key") {
 		t.Fatal("trace leaked API key")
 	}
 	if _, err := app.AskAI(filepath.Join(app.Workspaces().Current, "..", "outside.excalidraw"), `{"elements":[]}`, "", "edit", "", nil, sessionID, "request-5", "high"); err == nil {

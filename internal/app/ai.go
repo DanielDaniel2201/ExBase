@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -17,21 +16,11 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const deepSeekURL = "https://api.deepseek.com/chat/completions"
 const excalidrawMCPURL = "https://mcp.excalidraw.com/mcp"
 const aiOutputBudget = 65536
 const presentationOutputBudget = 131072
 const maxAIOutputBudget = 393216
 
-type AISettings struct {
-	HasAPIKey       bool   `json:"hasAPIKey"`
-	APIKey          string `json:"apiKey"`
-	ReasoningEffort string `json:"reasoningEffort"`
-}
-type aiConfig struct {
-	APIKey          string
-	ReasoningEffort string
-}
 type ChatMessage struct {
 	Role             string `json:"role"`
 	Content          string `json:"content"`
@@ -42,11 +31,6 @@ type AIResult struct {
 	ReasoningContent string          `json:"reasoningContent"`
 	CheckpointID     string          `json:"checkpointId"`
 	Elements         json.RawMessage `json:"elements"`
-}
-
-func authFile() (string, error) {
-	home, err := os.UserHomeDir()
-	return filepath.Join(home, ".exbase", "auth.json"), err
 }
 
 func validReasoningEffort(effort string) bool {
@@ -60,94 +44,6 @@ func applyReasoning(body map[string]any, effort string) {
 		return
 	}
 	body["reasoning_effort"] = effort
-}
-
-func loadAIConfig() (aiConfig, error) {
-	path, err := authFile()
-	if err != nil {
-		return aiConfig{}, err
-	}
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return aiConfig{ReasoningEffort: "high"}, nil
-	}
-	if err != nil {
-		return aiConfig{}, err
-	}
-	var auth struct {
-		DeepSeek struct {
-			APIKey          string `json:"apiKey"`
-			ReasoningEffort string `json:"reasoningEffort"`
-		} `json:"deepseek"`
-	}
-	if err := json.Unmarshal(data, &auth); err != nil {
-		return aiConfig{}, errors.New("cannot read AI settings")
-	}
-	if !validReasoningEffort(auth.DeepSeek.ReasoningEffort) {
-		auth.DeepSeek.ReasoningEffort = "high"
-	}
-	return aiConfig{APIKey: auth.DeepSeek.APIKey, ReasoningEffort: auth.DeepSeek.ReasoningEffort}, nil
-}
-
-func loadAPIKey() (string, error) {
-	config, err := loadAIConfig()
-	return config.APIKey, err
-}
-
-func (a *App) LoadAISettings() (AISettings, error) {
-	a.aiMu.Lock()
-	defer a.aiMu.Unlock()
-	config, err := loadAIConfig()
-	return AISettings{HasAPIKey: config.APIKey != "", APIKey: config.APIKey, ReasoningEffort: config.ReasoningEffort}, err
-}
-
-func (a *App) SaveAISettings(key, reasoningEffort string) (AISettings, error) {
-	a.aiMu.Lock()
-	defer a.aiMu.Unlock()
-	key = strings.TrimSpace(key)
-	reasoningEffort = strings.ToLower(strings.TrimSpace(reasoningEffort))
-	if !validReasoningEffort(reasoningEffort) {
-		return AISettings{}, errors.New("choose a valid reasoning effort")
-	}
-	old, err := loadAIConfig()
-	if err != nil {
-		return AISettings{}, err
-	}
-	if key == "" {
-		key = old.APIKey
-	}
-	if len(key) > 1024 || strings.ContainsAny(key, "\r\n\t ") {
-		return AISettings{}, errors.New("enter a valid API key")
-	}
-	path, err := authFile()
-	if err != nil {
-		return AISettings{}, err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return AISettings{}, err
-	}
-	data, _ := json.Marshal(map[string]any{"deepseek": map[string]string{"type": "api_key", "apiKey": key, "reasoningEffort": reasoningEffort}})
-	// Replace only after a complete write, so an interrupted save keeps the old key.
-	file, err := os.CreateTemp(filepath.Dir(path), "auth-*.tmp")
-	if err != nil {
-		return AISettings{}, err
-	}
-	defer os.Remove(file.Name())
-	if err := file.Chmod(0600); err != nil {
-		file.Close()
-		return AISettings{}, err
-	}
-	if _, err := file.Write(data); err != nil {
-		file.Close()
-		return AISettings{}, err
-	}
-	if err := file.Close(); err != nil {
-		return AISettings{}, err
-	}
-	if err := os.Rename(file.Name(), path); err != nil {
-		return AISettings{}, err
-	}
-	return AISettings{HasAPIKey: key != "", APIKey: key, ReasoningEffort: reasoningEffort}, nil
 }
 
 func (a *App) CancelAI() {
@@ -360,9 +256,13 @@ func (a *App) askAI(path, scene, checkpoint, prompt, screenshot string, history 
 		return AIResult{}, errors.New("an AI request is already running")
 	}
 	config, err := loadAIConfig()
-	if err != nil || config.APIKey == "" {
+	if err != nil {
 		a.aiMu.Unlock()
-		return AIResult{}, errors.New("configure your DeepSeek API key in Settings first")
+		return AIResult{}, err
+	}
+	if config.APIKey == "" {
+		a.aiMu.Unlock()
+		return AIResult{}, errors.New("configure the selected provider's API key in Settings first")
 	}
 	key := config.APIKey
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -390,7 +290,7 @@ func (a *App) askAI(path, scene, checkpoint, prompt, screenshot string, history 
 			err = logErr
 		}
 	}()
-	if err := trace.write("turn_start", map[string]any{"document_path": path, "prompt": prompt, "checkpoint_id": checkpoint, "element_count": len(current.Elements), "screenshot_bytes": len(screenshot), "reasoning_effort": reasoningEffort}); err != nil {
+	if err := trace.write("turn_start", map[string]any{"document_path": path, "prompt": prompt, "checkpoint_id": checkpoint, "element_count": len(current.Elements), "screenshot_bytes": len(screenshot), "reasoning_effort": reasoningEffort, "provider_id": config.ID, "provider_name": config.Name, "base_url": config.BaseURL, "model": config.Model}); err != nil {
 		return AIResult{}, err
 	}
 	client := &http.Client{}
@@ -519,14 +419,14 @@ func (a *App) askAI(path, scene, checkpoint, prompt, screenshot string, history 
 	for round := 0; round < roundLimit; round++ {
 		var choice aiChoice
 		for attempt := 0; ; attempt++ {
-			requestBody := map[string]any{"model": "deepseek-flash", "messages": messages, "tools": tools, "max_tokens": outputBudget, "stream": true, "stream_options": map[string]bool{"include_usage": true}}
+			requestBody := map[string]any{"model": config.Model, "messages": messages, "tools": tools, "max_tokens": outputBudget, "stream": true, "stream_options": map[string]bool{"include_usage": true}}
 			applyReasoning(requestBody, reasoningEffort)
 			body, _ := json.Marshal(requestBody)
 			if err := trace.write("llm_request", map[string]any{"round": round + 1, "attempt": attempt + 1, "request": json.RawMessage(body)}); err != nil {
 				return AIResult{}, err
 			}
 			llmStarted := time.Now()
-			req, err := http.NewRequestWithContext(ctx, "POST", deepSeekURL, bytes.NewReader(body))
+			req, err := http.NewRequestWithContext(ctx, "POST", config.BaseURL+"/chat/completions", bytes.NewReader(body))
 			if err != nil {
 				return AIResult{}, err
 			}
@@ -542,7 +442,7 @@ func (a *App) askAI(path, scene, checkpoint, prompt, screenshot string, history 
 				if err := trace.write("llm_error", map[string]any{"round": round + 1, "status": resp.StatusCode, "body": string(errorBody), "elapsed_ms": time.Since(llmStarted).Milliseconds()}); err != nil {
 					return AIResult{}, err
 				}
-				return AIResult{}, fmt.Errorf("DeepSeek request failed (HTTP %d)", resp.StatusCode)
+				return AIResult{}, fmt.Errorf("%s request failed (HTTP %d)", config.Name, resp.StatusCode)
 			}
 			response, err := decodeAIResponse(resp.Body, strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream"), func(edits []map[string]any, changeStyle bool) error {
 				if planning {
@@ -567,7 +467,7 @@ func (a *App) askAI(path, scene, checkpoint, prompt, screenshot string, history 
 				return AIResult{}, err
 			}
 			if len(response.Choices) == 0 {
-				return AIResult{}, errors.New("DeepSeek returned no response")
+				return AIResult{}, fmt.Errorf("%s returned no response", config.Name)
 			}
 			choice = response.Choices[0]
 			if choice.Finish != "length" {

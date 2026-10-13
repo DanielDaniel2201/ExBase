@@ -175,7 +175,13 @@ func TestLivePresentationPlanning(t *testing.T) {
 	t.Setenv("HOME", root)
 	a := NewApp()
 	a.Workspace = workspace.New(root)
-	if _, err := a.SaveAISettings(config.APIKey, "none"); err != nil {
+	providers := []AIProvider{officialAIProvider()}
+	if config.ID == "deepseek" {
+		providers[0] = config.AIProvider
+	} else {
+		providers = append(providers, config.AIProvider)
+	}
+	if _, err := a.SaveAIProviders(providers, config.ID); err != nil {
 		t.Fatal("could not configure isolated check")
 	}
 	srt := filepath.Join(root, "narration.srt")
