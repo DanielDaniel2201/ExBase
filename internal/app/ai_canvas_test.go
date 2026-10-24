@@ -66,7 +66,8 @@ func TestCanvasInspectionPages(t *testing.T) {
 
 func TestAgentMixesManagedAndNativeTools(t *testing.T) {
 	t.Setenv("USERPROFILE", t.TempDir())
-	app := &App{Workspace: workspace.New(t.TempDir())}
+	app := NewApp()
+	app.Workspace = workspace.New(t.TempDir())
 	if _, err := app.SaveAISettings("test-key", "high"); err != nil {
 		t.Fatal(err)
 	}

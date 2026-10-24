@@ -9,6 +9,7 @@ import (
 )
 
 type GeneralSettings struct {
+	AIEnabled             bool   `json:"aiEnabled"`
 	SlidesEnabled         bool   `json:"slidesEnabled"`
 	RecordingEnabled      bool   `json:"recordingEnabled"`
 	RecordingMode         string `json:"recordingMode"`
@@ -27,7 +28,7 @@ func generalSettingsFile() (string, error) {
 func (a *Store) LoadGeneralSettings() (GeneralSettings, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	settings := GeneralSettings{SlidesEnabled: true, RecordingMode: "canvas"}
+	settings := GeneralSettings{AIEnabled: true, SlidesEnabled: true, RecordingMode: "canvas"}
 	path, err := generalSettingsFile()
 	if err != nil {
 		return settings, err

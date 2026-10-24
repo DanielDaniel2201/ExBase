@@ -119,7 +119,8 @@ func TestLiveAIProvider(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("HOME", home)
-	app := &App{Workspace: workspace.New(t.TempDir())}
+	app := NewApp()
+	app.Workspace = workspace.New(t.TempDir())
 	provider := AIProvider{ID: "live-check", Name: "Live check", BaseURL: baseURL, Model: model, APIKey: key}
 	if _, err := app.SaveAIProviders([]AIProvider{officialAIProvider(), provider}, provider.ID); err != nil {
 		t.Fatal(err)

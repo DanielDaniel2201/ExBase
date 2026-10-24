@@ -130,7 +130,8 @@ func TestLiveAIProgress(t *testing.T) {
 	if os.Getenv("EXBASE_LIVE_AI_CHECK") != "1" {
 		t.Skip("set EXBASE_LIVE_AI_CHECK=1 to use the configured API")
 	}
-	app := &App{Workspace: workspace.New(t.TempDir())}
+	app := NewApp()
+	app.Workspace = workspace.New(t.TempDir())
 	path := filepath.Join(app.Workspaces().Current, "preview.excalidraw")
 	session, err := app.CreateAISession(path)
 	if err != nil {

@@ -255,6 +255,15 @@ func (a *App) askAI(path, scene, checkpoint, prompt, screenshot string, history 
 		a.aiMu.Unlock()
 		return AIResult{}, errors.New("an AI request is already running")
 	}
+	general, err := a.LoadGeneralSettings()
+	if err != nil {
+		a.aiMu.Unlock()
+		return AIResult{}, err
+	}
+	if !general.AIEnabled {
+		a.aiMu.Unlock()
+		return AIResult{}, errors.New("AI features are disabled in Settings")
+	}
 	config, err := loadAIConfig()
 	if err != nil {
 		a.aiMu.Unlock()

@@ -116,7 +116,8 @@ func TestAgentSynchronizesAndRestoresCanvas(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("HOME", home)
-	app := &App{Workspace: workspace.New(t.TempDir())}
+	app := NewApp()
+	app.Workspace = workspace.New(t.TempDir())
 	if _, err := app.SaveAISettings("test-key", "none"); err != nil {
 		t.Fatal(err)
 	}

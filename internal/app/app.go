@@ -39,3 +39,16 @@ func Startup(a *App, ctx context.Context) {
 }
 
 func (a *App) contains(path string) bool { return workspace.Contains(a.Workspace, path) }
+
+// SaveGeneralSettings serializes disabling AI with starting a request.
+func (a *App) SaveGeneralSettings(value settings.GeneralSettings) error {
+	a.aiMu.Lock()
+	defer a.aiMu.Unlock()
+	if err := a.Store.SaveGeneralSettings(value); err != nil {
+		return err
+	}
+	if !value.AIEnabled && a.aiCancel != nil {
+		a.aiCancel()
+	}
+	return nil
+}

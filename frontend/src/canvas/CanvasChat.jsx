@@ -24,7 +24,7 @@ function restoreMCPElements(elements) {
   return restore({ elements: [...standard, ...converted] }, null, null, { repairBindings: true }).elements;
 }
 
-export const CanvasChat = forwardRef(function CanvasChat({ doc, api, aiPreview, onSettings, slidesEnabled, onSlides, onReplay, recordingEnabled, recording, onRecord, onStopRecording }, ref) {
+export const CanvasChat = forwardRef(function CanvasChat({ doc, api, aiEnabled, aiPreview, onSettings, slidesEnabled, onSlides, onReplay, recordingEnabled, recording, onRecord, onStopRecording }, ref) {
   const [prompt, setPrompt] = useState("");
   const [templates, setTemplates] = useState([]);
   const [templateIndex, setTemplateIndex] = useState(0);
@@ -51,7 +51,7 @@ export const CanvasChat = forwardRef(function CanvasChat({ doc, api, aiPreview, 
   currentAPI.current = api;
 
   const recordingActive = recording.phase !== "idle";
-  const addonsAvailable = !!api;
+  const addonsAvailable = !!api && (aiEnabled || slidesReady || recordingEnabled || recordingActive);
   useImperativeHandle(ref, () => ({ generate: (text) => send(null, text), cancel: () => cancel() }));
   useEffect(() => {
     if (!addonsOpen) return;
@@ -80,18 +80,20 @@ export const CanvasChat = forwardRef(function CanvasChat({ doc, api, aiPreview, 
   }, [api, slidesEnabled]);
 
   useEffect(() => {
+    if (!aiEnabled) return;
     let active = true;
     const load = () => LoadPromptTemplates().then((value) => { if (active) setTemplates(value); }).catch((error) => { if (active) setError(String(error)); });
     load();
     window.addEventListener("prompt-templates-changed", load);
     return () => { active = false; window.removeEventListener("prompt-templates-changed", load); };
-  }, []);
+  }, [aiEnabled]);
 
   useEffect(() => {
     const input = composerInput.current;
+    if (!input) return;
     input.style.height = "auto";
     input.style.height = `${Math.min(input.scrollHeight, 240)}px`;
-  }, [prompt]);
+  }, [prompt, aiEnabled]);
 
   const suggestions = matchingTemplates(templates, prompt);
   const showTemplates = templateMenu && prompt.startsWith("/") && !prompt.includes("\n") && !busy;
@@ -161,6 +163,13 @@ export const CanvasChat = forwardRef(function CanvasChat({ doc, api, aiPreview, 
 
   function cancel(message = "Request cancelled") { request.current++; CancelAI(); clearPreview(); running.current = false; setBusy(false); setError(message); }
 
+  useEffect(() => {
+    if (!aiEnabled) {
+      if (running.current) cancel("");
+      setExpanded(false); setTemplateMenu(false); setAddonsOpen(false);
+    }
+  }, [aiEnabled]);
+
   async function newChat() {
     if (!messages.length) return;
     const id = ++request.current;
@@ -181,7 +190,7 @@ export const CanvasChat = forwardRef(function CanvasChat({ doc, api, aiPreview, 
   async function send(event, narrationPrompt) {
     event?.preventDefault();
     const text = (narrationPrompt ?? prompt).trim();
-    if (!api || running.current || !text) return false;
+    if (!aiEnabled || !api || running.current || !text) return false;
     const id = ++request.current;
     running.current = true; setBusy(true); setError("");
     let unsubscribe;
@@ -282,14 +291,15 @@ export const CanvasChat = forwardRef(function CanvasChat({ doc, api, aiPreview, 
   }
 
   const lastReply = [...messages].reverse().find((message) => message.role === "assistant")?.content;
-  return <div className="canvas-chat">
-    {expanded && <div className="chat-transcript" ref={transcript} role="log" aria-label="AI conversation">
+  return <div className={`canvas-chat ${aiEnabled ? "" : "ai-disabled"}`}>
+    {aiEnabled && expanded && <div className="chat-transcript" ref={transcript} role="log" aria-label="AI conversation">
       {!messages.length && <p className="chat-empty">Ask about this canvas or describe an edit.</p>}
       {messages.map((message, index) => <div key={index} className={`chat-message ${message.role}`}><small>{message.role === "user" ? "You" : "AI"}</small><p>{message.content}</p></div>)}
       {busy && <p className="chat-empty" role="status">{previewing ? "Drawing…" : "Working…"}</p>}
     </div>}
-    {error && <div className="chat-error" role="alert">{error}<button type="button" onClick={() => setError("")} aria-label="Dismiss error">×</button></div>}
+    {aiEnabled && error && <div className="chat-error" role="alert">{error}<button type="button" onClick={() => setError("")} aria-label="Dismiss error">×</button></div>}
     <div className="chat-composer">
+      {aiEnabled && <>
       <button ref={historyButton} type="button" className="chat-side-button chat-history-button" onClick={() => setExpanded(!expanded)} aria-label="Toggle conversation" aria-expanded={expanded} title={lastReply || "Conversation"}>
         <MessageCircle aria-hidden="true" />
         {lastReply && !expanded && <span className="chat-reply-dot" />}
@@ -307,18 +317,19 @@ export const CanvasChat = forwardRef(function CanvasChat({ doc, api, aiPreview, 
       <button type="button" className="chat-side-button" onClick={newChat} disabled={!api || !messages.length} aria-label="New chat" title="New chat">
         <Plus aria-hidden="true" />
       </button>
+      </>}
       {addonsAvailable && <div className="chat-addons" ref={addons}>
         <button type="button" className="chat-side-button" onClick={() => setAddonsOpen(!addonsOpen)} aria-label="Add-ons" aria-haspopup="menu" aria-expanded={addonsOpen} title="Add-ons">
           <Ellipsis aria-hidden="true" />
           {recording.phase === "recording" && <span className="recording-dot addons-recording-dot" />}
         </button>
         {addonsOpen && <div className="addons-menu" role="menu" aria-label="Add-ons">
-          <button type="button" role="menuitem" disabled={busy || !api || recordingActive} onClick={() => { setAddonsOpen(false); onReplay(); }}><SquarePlay aria-hidden="true" />Narrated replay</button>
+          {aiEnabled && <button type="button" role="menuitem" disabled={busy || !api || recordingActive} onClick={() => { setAddonsOpen(false); onReplay(); }}><SquarePlay aria-hidden="true" />Narrated replay</button>}
           {slidesReady && <button type="button" role="menuitem" disabled={busy || !api || recording.mode === "canvas-locked" && recordingActive} onClick={() => { setAddonsOpen(false); onSlides(); }}><Presentation aria-hidden="true" />Preview slides</button>}
           {(recordingEnabled || recordingActive) && <button type="button" role="menuitem" disabled={recording.phase === "starting" || recording.phase === "stopping" || !api} onClick={() => { setAddonsOpen(false); recordingActive ? onStopRecording() : onRecord(); }}>{recordingActive ? <Square aria-hidden="true" /> : <MonitorDot aria-hidden="true" />}{recording.phase === "starting" ? "Starting recording…" : recording.phase === "stopping" ? "Saving recording…" : recordingActive ? "Stop recording" : "Screen recording"}</button>}
         </div>}
       </div>}
     </div>
-    <span className="sr-only" role="status">{busy ? "AI is working" : lastReply}</span>
+    {aiEnabled && <span className="sr-only" role="status">{busy ? "AI is working" : lastReply}</span>}
   </div>;
 });

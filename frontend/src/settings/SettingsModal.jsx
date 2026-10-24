@@ -112,6 +112,8 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
           <label className="general-toggle"><span><strong>Keep recording on cancel</strong><small>When enabled, canceling Save keeps the video in ~/.exbase/recordings. When disabled, it discards the video.</small></span><input type="checkbox" role="switch" aria-label="Keep recording on cancel" checked={!!generalSettings?.keepRecordingOnCancel} disabled={!generalSettings?.recordingEnabled || recordingActive} onChange={(event) => saveGeneral({ keepRecordingOnCancel: event.target.checked })} /></label>
           {recordingActive && <p className="template-help">Stop recording to change recording settings.</p>}
         </> : <>
+        <label className="general-toggle"><span><strong>Enable AI features</strong><small>Show AI chat and narrated replay. Turning this off stops active AI requests and keeps your configuration.</small></span><input type="checkbox" role="switch" aria-label="Enable AI features" checked={!!generalSettings && generalSettings.aiEnabled !== false} disabled={!generalSettings || saving} onChange={(event) => saveGeneral({ aiEnabled: event.target.checked })} /></label>
+        {generalSettings?.aiEnabled !== false && <div className="ai-feature-settings">
         <AIProviders saving={saving} onSaving={setSaving} />
         <section className="prompt-template-settings" aria-labelledby="prompt-template-title">
           <div className="template-heading"><h3 id="prompt-template-title">Prompt Templates</h3><button type="button" disabled={!loaded || saving} onClick={() => {
@@ -125,6 +127,7 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
             {templates.map((template, index) => <button type="button" className="template-row" key={index} disabled={saving} onClick={() => { setError(""); setSelected({ index, template }); }}><span>{template.name}</span><ChevronRight aria-hidden="true" /></button>)}
           </div>
         </section>
+        </div>}
         </>}
         {error && <p role="alert" className="error">{error}</p>}
       </div>

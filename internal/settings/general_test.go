@@ -11,14 +11,14 @@ func TestGeneralSettings(t *testing.T) {
 	t.Setenv("HOME", home)
 	app := (&Store{})
 	settings, err := app.LoadGeneralSettings()
-	if err != nil || !settings.SlidesEnabled || settings.RecordingEnabled || settings.RecordingMode != "canvas" || settings.KeepRecordingOnCancel {
+	if err != nil || !settings.AIEnabled || !settings.SlidesEnabled || settings.RecordingEnabled || settings.RecordingMode != "canvas" || settings.KeepRecordingOnCancel {
 		t.Fatal(settings, err)
 	}
 	if err := app.SaveGeneralSettings(GeneralSettings{SlidesEnabled: false}); err != nil {
 		t.Fatal(err)
 	}
 	settings, err = (&Store{}).LoadGeneralSettings()
-	if err != nil || settings.SlidesEnabled {
+	if err != nil || settings.AIEnabled || settings.SlidesEnabled {
 		t.Fatal("disabled setting was not retained", settings, err)
 	}
 	path, _ := generalSettingsFile()
@@ -26,16 +26,16 @@ func TestGeneralSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	settings, err = app.LoadGeneralSettings()
-	if err != nil || settings.RecordingMode != "canvas" || settings.RecordingEnabled || settings.KeepRecordingOnCancel {
+	if err != nil || !settings.AIEnabled || settings.RecordingMode != "canvas" || settings.RecordingEnabled || settings.KeepRecordingOnCancel {
 		t.Fatal("legacy settings", settings, err)
 	}
 	for _, mode := range []string{"app", "canvas", "canvas-locked"} {
 		keepOnCancel := mode == "canvas"
-		if err := app.SaveGeneralSettings(GeneralSettings{SlidesEnabled: true, RecordingEnabled: true, RecordingMode: mode, KeepRecordingOnCancel: keepOnCancel}); err != nil {
+		if err := app.SaveGeneralSettings(GeneralSettings{AIEnabled: true, SlidesEnabled: true, RecordingEnabled: true, RecordingMode: mode, KeepRecordingOnCancel: keepOnCancel}); err != nil {
 			t.Fatal(err)
 		}
 		settings, err = app.LoadGeneralSettings()
-		if err != nil || !settings.RecordingEnabled || settings.RecordingMode != mode || settings.KeepRecordingOnCancel != keepOnCancel {
+		if err != nil || !settings.AIEnabled || !settings.RecordingEnabled || settings.RecordingMode != mode || settings.KeepRecordingOnCancel != keepOnCancel {
 			t.Fatal("recording settings not retained", settings, err)
 		}
 	}

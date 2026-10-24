@@ -351,3 +351,6 @@ nav > .tree { padding-left: 8px; }
 .video-editor-export:hover:not(:disabled) { background: #555; border-color: #555; }
 .video-editor-export:disabled { opacity: 0.5; cursor: default; }
 .video-editor input[type="range"] { width: 100%; }
+
+.ai-feature-settings { margin-top: 24px; }
+.ai-disabled .chat-composer { justify-content: flex-end; }
