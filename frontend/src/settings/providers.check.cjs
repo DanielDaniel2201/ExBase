@@ -15,7 +15,7 @@ const path = require('node:path');
       const doc = { path: 'D:\\check\\Canvas.excalidraw', data: JSON.stringify({ type: 'excalidraw', version: 2, elements: [], appState: {}, files: {} }) };
       window.check = { fail: false, delay: false, calls: [], saves: 0 };
       window.go = { main: { App: {
-        Workspaces: async () => ({ current: 'D:\\check', folders: ['D:\\check'] }), ReadDirectory: async () => [{ path: doc.path, name: 'Canvas.excalidraw', isDir: false }], OpenDocument: async () => doc,
+        SetCloseGuard: async () => {}, ConfirmClose: async () => {}, Workspaces: async () => ({ current: 'D:\\check', folders: ['D:\\check'] }), ReadDirectory: async () => [{ path: doc.path, name: 'Canvas.excalidraw', isDir: false }], OpenDocument: async () => doc,
         LoadGeneralSettings: async () => ({ slidesEnabled: false, recordingEnabled: false }), Save: async () => {}, LoadPromptTemplates: async () => [],
         LoadAISettings: async () => settings(),
         SaveAIProviders: async (providers, activeProviderID) => {

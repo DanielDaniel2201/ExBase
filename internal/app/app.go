@@ -6,6 +6,8 @@ import (
 	"exbase/internal/workspace"
 	"os"
 	"sync"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
@@ -22,6 +24,7 @@ type App struct {
 	recordingID       string
 	recordingName     string
 	recordingSaving   bool
+	closeGuard        bool
 	recordingEncoder  *mp4Encoder
 	presentationMu    sync.Mutex
 	presentationMedia map[string]string
@@ -39,6 +42,18 @@ func Startup(a *App, ctx context.Context) {
 }
 
 func (a *App) contains(path string) bool { return workspace.Contains(a.Workspace, path) }
+
+// Enable the guard only after the frontend has registered its save handler.
+func (a *App) SetCloseGuard(enabled bool) {
+	a.recordingMu.Lock()
+	a.closeGuard = enabled
+	a.recordingMu.Unlock()
+}
+
+func (a *App) ConfirmClose() {
+	a.SetCloseGuard(false)
+	runtime.Quit(a.ctx)
+}
 
 // SaveGeneralSettings serializes disabling AI with starting a request.
 func (a *App) SaveGeneralSettings(value settings.GeneralSettings) error {

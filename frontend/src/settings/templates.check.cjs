@@ -13,7 +13,7 @@ const path = require('node:path');
       const initial = [{ name: 'PPT', body: 'Draw {{topic}}' }, { name: 'SRT · 叙述回放', body: 'SRT 文件：{{SRT 文件路径}}' }];
       const doc = { path: 'D:\\check\\Canvas.excalidraw', data: JSON.stringify({ type: 'excalidraw', version: 2, elements: [], appState: {}, files: {} }) };
       window.go = { main: { App: {
-        Workspaces: async () => ({ current: 'D:\\check', folders: ['D:\\check'] }),
+        SetCloseGuard: async () => {}, ConfirmClose: async () => {}, Workspaces: async () => ({ current: 'D:\\check', folders: ['D:\\check'] }),
         ReadDirectory: async () => [{ path: doc.path, name: 'Canvas.excalidraw', isDir: false }], OpenDocument: async () => doc,
         LoadGeneralSettings: async () => ({ slidesEnabled: false, recordingEnabled: false }), Save: async () => {},
         LoadAISettings: async () => ({ providers: [{ id: 'deepseek', name: 'DeepSeek', baseURL: 'https://api.deepseek.com', model: 'deepseek-flash', apiKey: 'fixture' }], activeProviderID: 'deepseek', hasAPIKey: true, apiKey: 'fixture' }),

@@ -13,7 +13,7 @@ const path = require('node:path');
       const doc = { path: 'D:\\check\\Canvas.excalidraw', data: JSON.stringify({ type: 'excalidraw', version: 2, elements: [], appState: {}, files: {} }) };
       window.check = { cancels: 0, calls: 0, fail: false };
       window.go = { main: { App: {
-        Workspaces: async () => ({ current: 'D:\\check', folders: ['D:\\check'] }),
+        SetCloseGuard: async () => {}, ConfirmClose: async () => {}, Workspaces: async () => ({ current: 'D:\\check', folders: ['D:\\check'] }),
         ReadDirectory: async () => [{ path: doc.path, name: 'Canvas.excalidraw', isDir: false }], OpenDocument: async () => doc, Save: async () => {},
         LoadGeneralSettings: async () => general(),
         SaveGeneralSettings: async value => { if (window.check.fail) { window.check.fail = false; throw Error('Cannot save settings'); } localStorage.setItem('check-general', JSON.stringify(value)); },

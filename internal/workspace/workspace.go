@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"exbase/internal/fileio"
 	"os"
 	"path/filepath"
 	"sort"
@@ -135,7 +136,7 @@ func (a *Workspace) ReadDirectory(path string) ([]FileEntry, error) {
 	}
 	entries := make([]FileEntry, 0, len(items))
 	for _, item := range items {
-		if item.Type()&os.ModeSymlink != 0 || (!item.IsDir() && !strings.EqualFold(filepath.Ext(item.Name()), ".excalidraw")) {
+		if item.Type()&os.ModeSymlink != 0 || (!item.IsDir() && !isDocument(item.Name())) {
 			continue
 		}
 		entries = append(entries, FileEntry{
@@ -152,25 +153,39 @@ func (a *Workspace) ReadDirectory(path string) ([]FileEntry, error) {
 }
 
 func (a *Workspace) OpenDocument(path string) (Document, error) {
-	if !a.contains(path) || !strings.EqualFold(filepath.Ext(path), ".excalidraw") {
-		return Document{}, errors.New("file is outside the open workspace or is not an Excalidraw file")
+	if !a.contains(path) || !isDocument(path) {
+		return Document{}, errors.New("file is outside the open workspace or is not an Excalidraw or Markdown file")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return Document{}, err
+	}
+	if !info.Mode().IsRegular() {
+		return Document{}, errors.New("only regular document files can be opened")
 	}
 	data, err := os.ReadFile(path)
 	return Document{Path: path, Data: string(data)}, err
 }
 
 func (a *Workspace) CreateDocument(dir string) (Document, error) {
+	return a.createDocument(dir, ".excalidraw", `{"type":"excalidraw","version":2,"source":"local","elements":[],"appState":{},"files":{}}`)
+}
+
+func (a *Workspace) CreateMarkdown(dir string) (Document, error) {
+	return a.createDocument(dir, ".md", "")
+}
+
+func (a *Workspace) createDocument(dir, ext, data string) (Document, error) {
 	if dir == "" {
 		dir = a.root
 	}
 	if !a.contains(dir) {
 		return Document{}, errors.New("folder is outside the open workspace")
 	}
-	path, file, err := createUnique(dir, "Untitled", ".excalidraw", false)
+	path, file, err := createUnique(dir, "Untitled", ext, false)
 	if err != nil {
 		return Document{}, err
 	}
-	data := `{"type":"excalidraw","version":2,"source":"local","elements":[],"appState":{},"files":{}}`
 	if _, err := file.WriteString(data); err != nil {
 		file.Close()
 		os.Remove(path)
@@ -209,8 +224,14 @@ func (a *Workspace) Rename(path, name string) (FileEntry, error) {
 	if info.Mode()&os.ModeSymlink != 0 {
 		return FileEntry{}, errors.New("symbolic links cannot be renamed")
 	}
-	if !info.IsDir() && !strings.EqualFold(filepath.Ext(name), ".excalidraw") {
-		name += ".excalidraw"
+	if !info.IsDir() {
+		if !isDocument(path) {
+			return FileEntry{}, errors.New("only Excalidraw and Markdown files can be renamed")
+		}
+		ext := filepath.Ext(path)
+		if !strings.EqualFold(filepath.Ext(name), ext) {
+			name += ext
+		}
 	}
 	target := filepath.Join(filepath.Dir(path), name)
 	entry := FileEntry{Name: filepath.Base(target), Path: target, IsDir: info.IsDir()}
@@ -240,8 +261,8 @@ func (a *Workspace) DeleteEntry(path string) error {
 	if info.IsDir() {
 		return os.RemoveAll(path)
 	}
-	if !strings.EqualFold(filepath.Ext(path), ".excalidraw") {
-		return errors.New("only Excalidraw files can be deleted")
+	if !isDocument(path) {
+		return errors.New("only Excalidraw and Markdown files can be deleted")
 	}
 	return os.Remove(path)
 }
@@ -271,10 +292,25 @@ func createUnique(dir, name, ext string, directory bool) (string, *os.File, erro
 }
 
 func (a *Workspace) Save(path, data string) error {
-	if !a.contains(path) || !strings.EqualFold(filepath.Ext(path), ".excalidraw") {
-		return errors.New("file is outside the open workspace or is not an Excalidraw file")
+	if !a.contains(path) || !isDocument(path) {
+		return errors.New("file is outside the open workspace or is not an Excalidraw or Markdown file")
 	}
-	return os.WriteFile(path, []byte(data), 0644)
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return errors.New("only regular document files can be saved")
+	}
+	return fileio.Replace(path, []byte(data))
+}
+
+func isDocument(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".excalidraw", ".md", ".markdown":
+		return true
+	}
+	return false
 }
 
 func (a *Workspace) contains(path string) bool {
@@ -282,7 +318,24 @@ func (a *Workspace) contains(path string) bool {
 		return false
 	}
 	rel, err := filepath.Rel(a.root, filepath.Clean(path))
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	root, err := filepath.EvalSymlinks(a.root)
+	if err != nil {
+		return false
+	}
+	for current := filepath.Clean(path); ; current = filepath.Dir(current) {
+		resolved, err := filepath.EvalSymlinks(current)
+		if errors.Is(err, os.ErrNotExist) && filepath.Dir(current) != current {
+			continue
+		}
+		if err != nil {
+			return false
+		}
+		rel, err := filepath.Rel(root, resolved)
+		return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	}
 }
 
 // Contains applies the same workspace boundary to AI requests.

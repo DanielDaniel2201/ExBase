@@ -43,7 +43,7 @@ const encoders = new Map();
         { path: 'D:\\check\\Blue.excalidraw', data: scene('#0000ff') },
       ];
       window.go = { main: { App: {
-        Workspaces: async () => ({ current: 'D:\\check', folders: ['D:\\check'] }),
+        SetCloseGuard: async () => {}, ConfirmClose: async () => {}, Workspaces: async () => ({ current: 'D:\\check', folders: ['D:\\check'] }),
         ReadDirectory: async () => docs.map((doc) => ({ path: doc.path, name: doc.path.split('\\').pop(), isDir: false })),
         OpenDocument: async (p) => docs.find((doc) => doc.path === p),
         Save: async () => { window.check.saves++; },

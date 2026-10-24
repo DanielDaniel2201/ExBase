@@ -110,3 +110,107 @@ func TestCreateUnique(t *testing.T) {
 		t.Fatal("workspace root deletion should fail")
 	}
 }
+
+func TestMarkdownLifecycle(t *testing.T) {
+	root := t.TempDir()
+	app := New(root)
+	first, err := app.CreateMarkdown("")
+	if err != nil || filepath.Base(first.Path) != "Untitled.md" || first.Data != "" {
+		t.Fatalf("unexpected new Markdown: %#v, %v", first, err)
+	}
+	second, err := app.CreateMarkdown(root)
+	if err != nil || filepath.Base(second.Path) != "Untitled 2.md" {
+		t.Fatalf("expected a unique name: %#v, %v", second, err)
+	}
+	content := "# 笔记\n\n- [x] **完成**\n\n```go\nfmt.Println(1)\n```\n"
+	if err := app.Save(first.Path, content); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Save(first.Path, content+"\nUpdated\n"); err != nil {
+		t.Fatal(err)
+	}
+	renamed, err := app.Rename(first.Path, "笔记")
+	if err != nil || renamed.Name != "笔记.md" {
+		t.Fatalf("Markdown extension was not preserved: %#v, %v", renamed, err)
+	}
+	opened, err := app.OpenDocument(renamed.Path)
+	if err != nil || opened.Data != content+"\nUpdated\n" {
+		t.Fatalf("content did not survive saving and renaming: %#v, %v", opened, err)
+	}
+	if _, err := app.Rename(second.Path, "笔记.md"); err == nil {
+		t.Fatal("rename must not overwrite an existing note")
+	}
+	for _, name := range []string{"UPPER.MD", "long.markdown", "drawing.excalidraw", "ignored.txt"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("test"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	entries, err := app.ReadDirectory("")
+	if err != nil || len(entries) != 5 {
+		t.Fatalf("expected Markdown and Excalidraw files only: %#v, %v", entries, err)
+	}
+	long, err := app.Rename(filepath.Join(root, "long.markdown"), "Renamed")
+	if err != nil || long.Name != "Renamed.markdown" {
+		t.Fatalf("long extension was not preserved: %#v, %v", long, err)
+	}
+	for _, path := range []string{filepath.Join(root, "ignored.txt"), filepath.Join(filepath.Dir(root), "outside.md")} {
+		if _, err := app.OpenDocument(path); err == nil {
+			t.Fatal("unsupported or outside file was opened")
+		}
+		if err := app.Save(path, "bad"); err == nil {
+			t.Fatal("unsupported or outside file was saved")
+		}
+		if _, err := app.Rename(path, "bad"); err == nil {
+			t.Fatal("unsupported or outside file was renamed")
+		}
+		if err := app.DeleteEntry(path); err == nil {
+			t.Fatal("unsupported or outside file was deleted")
+		}
+	}
+	if _, err := app.CreateMarkdown(filepath.Dir(root)); err == nil {
+		t.Fatal("Markdown was created outside the workspace")
+	}
+	if err := app.DeleteEntry(renamed.Path); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Save(renamed.Path, "late autosave"); err == nil {
+		t.Fatal("autosave must not recreate a deleted file")
+	}
+	folder, err := app.CreateFolder(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inside, err := app.CreateMarkdown(folder.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved, err := app.Rename(folder.Path, "Notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.OpenDocument(filepath.Join(moved.Path, filepath.Base(inside.Path))); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWorkspaceRejectsLinkedDocuments(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	app := New(root)
+	target := filepath.Join(outside, "private.md")
+	if err := os.WriteFile(target, []byte("private"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symbolic links unavailable: %v", err)
+	}
+	if _, err := app.OpenDocument(filepath.Join(link, "private.md")); err == nil {
+		t.Fatal("linked file outside the workspace was opened")
+	}
+	if _, err := app.CreateMarkdown(link); err == nil {
+		t.Fatal("file was created through a link outside the workspace")
+	}
+	if err := app.Save(filepath.Join(link, "private.md"), "bad"); err == nil {
+		t.Fatal("file was saved through a link outside the workspace")
+	}
+}

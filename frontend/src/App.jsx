@@ -2,8 +2,9 @@ import React, { useEffect, useRef, useState } from "react";
 import { PanelLeftClose, PanelLeftOpen, PencilRuler, Settings, X } from "lucide-react";
 import { CaptureUpdateAction, Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
 import {
-  ChooseFolder, CreateDocument, CreateFolder, DeleteEntry, OpenDocument, ReadDirectory, Rename, Save, SwitchFolder, Workspaces, LoadGeneralSettings,
+  ChooseFolder, ConfirmClose, CreateDocument, CreateMarkdown, CreateFolder, DeleteEntry, OpenDocument, ReadDirectory, Rename, Save, SetCloseGuard, SwitchFolder, Workspaces, LoadGeneralSettings,
 } from "../wailsjs/go/main/App";
+import { EventsOn } from "../wailsjs/runtime/runtime";
 import { FileTree } from "./workspace/FileTree";
 import { Titlebar } from "./workspace/Titlebar";
 import { parseScene } from "./canvas/scene";
@@ -15,6 +16,7 @@ import { useRecording } from "./recording/useRecording";
 import { NarratedReplay } from "./presentation/NarratedReplay";
 import { RecordingSetup } from "./recording/RecordingSetup";
 import { VideoEditor } from "./recording/VideoEditor";
+import { isMarkdown, MarkdownEditor } from "./markdown/MarkdownEditor";
 
 function basename(path) {
   return path.split(/[\\/]/).pop();
@@ -31,6 +33,8 @@ export default function App() {
   const [folders, setFolders] = useState([]);
   const [entries, setEntries] = useState([]);
   const [doc, setDoc] = useState(null);
+  const [fileBusy, setFileBusy] = useState(false);
+  const [markdownError, setMarkdownError] = useState("");
   const [api, setApi] = useState(null);
   const [status, setStatus] = useState("");
   const [contextMenu, setContextMenu] = useState(null);
@@ -48,11 +52,58 @@ export default function App() {
   const picker = useRef();
   const autosaveTimer = useRef();
   const lastSaved = useRef("");
+  const markdownText = useRef("");
+  const saveQueue = useRef(Promise.resolve());
+  const saveRevision = useRef(0);
+  const saveRef = useRef();
+  saveRef.current = save;
+  const documentRef = useRef(doc); documentRef.current = doc;
+  const canvasRef = useRef(api); canvasRef.current = api;
+  const fileOperation = useRef(null);
   const aiPreview = useRef(null);
   const chat = useRef(null);
   const { recording, start: startRecording, stop: stopRecording, locked, notice, dismissNotice, recordedVideos, clearRecordedVideos, saveRecording } = useRecording(api, doc, setStatus);
   const lockedRef = useRef(locked);
   lockedRef.current = locked;
+
+  useEffect(() => {
+    let closing = false;
+    const unsubscribe = EventsOn("workspace:close-requested", async () => {
+      if (closing) return;
+      closing = true;
+      let started = false;
+      try {
+        await fileOperation.current?.done;
+        started = beginFileOperation();
+        if (!started) return;
+        await saveRef.current();
+        await ConfirmClose();
+      } catch (error) {
+        setStatus(String(error));
+        window.alert(`Could not save the current file. The window will stay open.\n${error}`);
+      } finally {
+        if (started) endFileOperation();
+        closing = false;
+      }
+    });
+    SetCloseGuard(true).catch((error) => setStatus(String(error)));
+    return () => { unsubscribe?.(); SetCloseGuard(false).catch(() => {}); };
+  }, []);
+
+  function beginFileOperation() {
+    if (lockedRef.current || fileOperation.current) return false;
+    let finish;
+    const done = new Promise((resolve) => { finish = resolve; });
+    fileOperation.current = { done, finish };
+    setFileBusy(true);
+    return true;
+  }
+
+  function endFileOperation() {
+    fileOperation.current?.finish();
+    fileOperation.current = null;
+    setFileBusy(false);
+  }
 
   useEffect(() => {
     if (!locked) return;
@@ -87,11 +138,14 @@ export default function App() {
 
   async function applyWorkspace(state) {
     if (lockedRef.current) return;
+    clearTimeout(autosaveTimer.current);
     setWorkspace(state.current);
     setFolders(state.folders);
     setEntries([]);
     setDoc(null);
     setApi(null);
+    documentRef.current = null;
+    canvasRef.current = null;
     setSelectedEntry(null);
     setEditingPath(null);
     setContextMenu(null);
@@ -103,43 +157,62 @@ export default function App() {
   }
 
   async function chooseFolder() {
-    if (lockedRef.current) return;
+    if (!beginFileOperation()) return;
     if (picker.current) picker.current.open = false;
     try {
-      if (doc && api) await save();
+      await save();
       const state = await ChooseFolder();
       if (state.current) await applyWorkspace(state);
     } catch (error) {
       setStatus(String(error));
+    } finally {
+      endFileOperation();
     }
   }
 
   async function switchFolder(path) {
-    if (lockedRef.current) return;
-    if (picker.current) picker.current.open = false;
     if (path === workspace) return;
+    if (!beginFileOperation()) return;
+    if (picker.current) picker.current.open = false;
     try {
-      if (doc && api) await save();
+      await save();
       await applyWorkspace(await SwitchFolder(path));
     } catch (error) {
       setStatus(String(error));
+    } finally {
+      endFileOperation();
     }
   }
 
   async function openDocument(path) {
-    if (lockedRef.current) return;
+    if (!beginFileOperation()) return;
     try {
-      if (doc && api) await save();
+      await save();
       const file = await OpenDocument(path);
       if (lockedRef.current) return;
-      const scene = parseScene(file.data);
-      lastSaved.current = serializeAsJSON(scene.elements, scene.appState || {}, scene.files || {}, "local");
-      setApi(null);
-      setDoc({ path: file.path, scene });
+      activateDocument(file);
       setStatus("");
     } catch (error) {
       setStatus(String(error));
+    } finally {
+      endFileOperation();
     }
+  }
+
+  function activateDocument(file) {
+    clearTimeout(autosaveTimer.current);
+    const markdown = isMarkdown(file.path);
+    const scene = markdown ? null : parseScene(file.data);
+    lastSaved.current = markdown ? file.data : serializeAsJSON(scene.elements, scene.appState || {}, scene.files || {}, "local");
+    markdownText.current = markdown ? file.data : "";
+    setMarkdownError("");
+    setApi(null);
+    canvasRef.current = null;
+    setSlidesOpen(false);
+    setReplayOpen(false);
+    const next = markdown ? { path: file.path, content: file.data } : { path: file.path, scene };
+    documentRef.current = next;
+    setDoc(next);
   }
 
   async function refreshTree(dir) {
@@ -148,27 +221,26 @@ export default function App() {
     setRevealPath(dir === workspace ? null : dir);
   }
 
-  async function createDocument(dir = workspace) {
-    if (lockedRef.current) return;
+  async function createDocument(dir = workspace, markdown = false) {
+    if (!beginFileOperation()) return;
     setContextMenu(null);
     try {
-      if (doc && api) await save();
-      const file = await CreateDocument(dir);
-      const scene = parseScene(file.data);
-      lastSaved.current = file.data;
+      await save();
+      const file = await (markdown ? CreateMarkdown(dir) : CreateDocument(dir));
       await refreshTree(dir);
-      setApi(null);
-      setDoc({ path: file.path, scene });
+      activateDocument(file);
       setSelectedEntry({ name: basename(file.path), path: file.path, isDir: false });
       setEditingPath(file.path);
       setStatus("");
     } catch (error) {
       setStatus(String(error));
+    } finally {
+      endFileOperation();
     }
   }
 
   async function createFolder(dir = workspace) {
-    if (lockedRef.current) return;
+    if (!beginFileOperation()) return;
     setContextMenu(null);
     try {
       const entry = await CreateFolder(dir);
@@ -178,21 +250,20 @@ export default function App() {
       setStatus("");
     } catch (error) {
       setStatus(String(error));
+    } finally {
+      endFileOperation();
     }
   }
 
   async function renameEntry(entry, name) {
-    if (lockedRef.current) return false;
+    if (!beginFileOperation()) return false;
     try {
       const containsCurrent = isSameOrChild(doc?.path, entry.path);
-      if (containsCurrent && api) await save();
+      if (containsCurrent) await save();
       const renamed = await Rename(entry.path, name);
       if (containsCurrent) {
         const file = await OpenDocument(renamed.path + doc.path.slice(entry.path.length));
-        const scene = parseScene(file.data);
-        lastSaved.current = file.data;
-        setApi(null);
-        setDoc({ path: file.path, scene });
+        activateDocument(file);
       }
       setSelectedEntry(renamed);
       setEditingPath(null);
@@ -202,6 +273,8 @@ export default function App() {
     } catch (error) {
       setStatus(String(error));
       return false;
+    } finally {
+      endFileOperation();
     }
   }
 
@@ -212,7 +285,7 @@ export default function App() {
     setSelectedEntry(entry);
     setContextMenu({
       x: Math.min(event.clientX, window.innerWidth - 190),
-      y: Math.min(event.clientY, window.innerHeight - 140),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 170)),
       entry,
     });
   }
@@ -221,13 +294,17 @@ export default function App() {
     if (lockedRef.current) return;
     setContextMenu(null);
     if (entry.isDir && !window.confirm(`Delete "${entry.name}" and everything inside it?`)) return;
+    if (!beginFileOperation()) return;
     const deletesCurrent = isSameOrChild(doc?.path, entry.path);
     if (deletesCurrent) clearTimeout(autosaveTimer.current);
     try {
+      await saveQueue.current.catch(() => {});
       await DeleteEntry(entry.path);
       if (deletesCurrent) {
         setDoc(null);
         setApi(null);
+        documentRef.current = null;
+        canvasRef.current = null;
         lastSaved.current = "";
       }
       if (isSameOrChild(editingPath, entry.path)) setEditingPath(null);
@@ -235,8 +312,11 @@ export default function App() {
       await refreshTree("");
       setStatus("");
     } catch (error) {
-      if (deletesCurrent && api) autosave(api.getSceneElements(), api.getAppState(), api.getFiles());
+      if (deletesCurrent && isMarkdown(doc.path)) scheduleSave(doc.path, markdownText.current);
+      else if (deletesCurrent && api) autosave(api.getSceneElements(), api.getAppState(), api.getFiles());
       setStatus(String(error));
+    } finally {
+      endFileOperation();
     }
   }
 
@@ -249,11 +329,59 @@ export default function App() {
 
   async function save() {
     clearTimeout(autosaveTimer.current);
-    const elements = aiPreview.current?.api === api ? aiPreview.current.original : api.getSceneElements();
-    const data = serializeAsJSON(reconcileMermaid(elements), api.getAppState(), api.getFiles(), "local");
-    await Save(doc.path, data);
-    lastSaved.current = data;
-    setStatus("Saved");
+    const revision = ++saveRevision.current;
+    const doc = documentRef.current;
+    const api = canvasRef.current;
+    if (!doc || (!isMarkdown(doc.path) && !api)) return;
+    let data = markdownText.current;
+    if (!isMarkdown(doc.path)) {
+      const elements = aiPreview.current?.api === api ? aiPreview.current.original : api.getSceneElements();
+      data = serializeAsJSON(reconcileMermaid(elements), api.getAppState(), api.getFiles(), "local");
+    }
+    await persist(doc.path, data);
+    if (saveRevision.current === revision) {
+      lastSaved.current = data;
+      setStatus("Saved");
+    }
+  }
+
+  function persist(path, data) {
+    const pending = saveQueue.current.catch(() => {}).then(() => Save(path, data));
+    saveQueue.current = pending;
+    return pending.then(() => {
+      if (documentRef.current?.path === path) setMarkdownError("");
+    }, (error) => {
+      if (isMarkdown(path) && documentRef.current?.path === path) setMarkdownError(String(error));
+      throw error;
+    });
+  }
+
+  function saveNow() {
+    save().catch((error) => setStatus(String(error)));
+  }
+
+  function changeMarkdown(content) {
+    markdownText.current = content;
+    setDoc((current) => ({ ...current, content }));
+    setStatus("Unsaved");
+    scheduleSave(doc.path, content);
+  }
+
+  function scheduleSave(path, data) {
+    clearTimeout(autosaveTimer.current);
+    const revision = ++saveRevision.current;
+    autosaveTimer.current = setTimeout(async () => {
+      try {
+        setStatus("Saving...");
+        await persist(path, data);
+        if (saveRevision.current === revision) {
+          lastSaved.current = data;
+          setStatus("Saved");
+        }
+      } catch (error) {
+        setStatus(String(error));
+      }
+    }, 600);
   }
 
   function autosave(elements, appState, files) {
@@ -266,17 +394,7 @@ export default function App() {
     elements = reconciled;
     const data = serializeAsJSON(elements, appState, files, "local");
     if (data === lastSaved.current) return;
-    clearTimeout(autosaveTimer.current);
-    autosaveTimer.current = setTimeout(async () => {
-      try {
-        setStatus("Saving...");
-        await Save(doc.path, data);
-        lastSaved.current = data;
-        setStatus("Saved");
-      } catch (error) {
-        setStatus(String(error));
-      }
-    }, 600);
+    scheduleSave(doc.path, data);
   }
 
   function renderWorkspacePicker() {
@@ -330,14 +448,14 @@ export default function App() {
     {settingsOpen && <SettingsModal generalSettings={generalSettings} onGeneralSettings={setGeneralSettings} recordingActive={recording.phase !== "idle"} onClose={() => setSettingsOpen(false)} />}
     <div className="welcome">
       <h1>ExBase</h1>
-      <p>Open a folder containing Excalidraw files.</p>
+      <p>Open a folder containing Excalidraw or Markdown files.</p>
       <button onClick={chooseFolder}>Open Folder</button>
       {status && <p className="error">{status}</p>}
     </div>
   </main>;
 
   return <main className={`workspace ${sidebarOpen ? "" : "sidebar-collapsed"} ${slidesOpen ? "slides-open" : ""} ${locked ? "recording-locked" : ""}`}>
-    {sidebarOpen && <aside inert={locked ? "" : undefined}>
+    {sidebarOpen && <aside inert={locked || fileBusy ? "" : undefined}>
       <div className="sidebar-header">
         {renderWorkspacePicker()}
         {settingsButton()}
@@ -345,7 +463,7 @@ export default function App() {
           <PanelLeftClose aria-hidden="true" />
         </button>
       </div>
-      <nav aria-label="Excalidraw files" onContextMenu={(event) => showContextMenu(event)} onKeyDown={handleTreeKeyDown}>
+      <nav aria-label="Workspace files" onContextMenu={(event) => showContextMenu(event)} onKeyDown={handleTreeKeyDown}>
         <FileTree
           entries={entries}
           activePath={doc?.path}
@@ -373,29 +491,35 @@ export default function App() {
                 setContextMenu(null);
               }}>Rename</button>
               {contextMenu.entry.isDir && <button onClick={() => createDocument(contextMenu.entry.path)}>New Excalidraw File</button>}
+              {contextMenu.entry.isDir && <button onClick={() => createDocument(contextMenu.entry.path, true)}>New Markdown File</button>}
+              {contextMenu.entry.isDir && <button onClick={() => createFolder(contextMenu.entry.path)}>New Folder</button>}
               <button onClick={() => deleteEntry(contextMenu.entry)}>Delete</button>
             </>
           : <>
               <button onClick={() => createDocument()}>New Excalidraw File</button>
+              <button onClick={() => createDocument(workspace, true)}>New Markdown File</button>
               <button onClick={() => createFolder()}>New Folder</button>
             </>}
       </div>}
     </aside>}
     <Titlebar>
-      {slidesOpen ? <span className="slides-document-name">{basename(doc.path)}</span> : !sidebarOpen && <div className="titlebar-workspace" inert={locked ? "" : undefined} onDoubleClick={(event) => event.stopPropagation()}>
+      {slidesOpen ? <span className="slides-document-name">{basename(doc.path)}</span> : !sidebarOpen && <div className="titlebar-workspace" inert={locked || fileBusy ? "" : undefined} onDoubleClick={(event) => event.stopPropagation()}>
         {renderWorkspacePicker()}
         {settingsButton()}
         <button className="sidebar-toggle" onClick={() => setSidebarOpen(true)} title="Expand sidebar" aria-label="Expand sidebar">
           <PanelLeftOpen aria-hidden="true" />
         </button>
       </div>}
+      {isMarkdown(doc?.path) && <span className="markdown-document-name">{basename(doc.path)}</span>}
       {recordingStatus()}
     </Titlebar>
-    <section className="canvas" inert={slidesOpen ? "" : undefined}>
+    <section className="canvas" aria-busy={fileBusy} inert={slidesOpen || fileBusy ? "" : undefined}>
       {doc
-        ? <Excalidraw key={`canvas:${doc.path}`} initialData={{ ...doc.scene, scrollToContent: true }} viewModeEnabled={slidesOpen} excalidrawAPI={setApi} onChange={autosave} />
-        : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an <PencilRuler className="file-icon" aria-hidden="true" /> Excalidraw file from the sidebar.<br />Or double-click to create a new one.</p></div>}
-      {doc && <CanvasChat ref={chat} key={`chat:${doc.path}`} doc={doc} api={api} aiEnabled={!!generalSettings && generalSettings.aiEnabled !== false} aiPreview={aiPreview} slidesEnabled={generalSettings?.slidesEnabled} onSlides={() => setSlidesOpen(true)} onReplay={() => setReplayOpen(true)} onSettings={() => { if (!lockedRef.current) setSettingsOpen(true); }} recordingEnabled={generalSettings?.recordingEnabled} recording={recording} onRecord={handleRecordClick} onStopRecording={stopRecording} />}
+        ? isMarkdown(doc.path)
+          ? <MarkdownEditor key={`markdown:${doc.path}`} content={doc.content} onChange={changeMarkdown} onSave={saveNow} error={markdownError} />
+          : <Excalidraw key={`canvas:${doc.path}`} initialData={{ ...doc.scene, scrollToContent: true }} viewModeEnabled={slidesOpen} excalidrawAPI={setApi} onChange={autosave} />
+        : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an <PencilRuler className="file-icon" aria-hidden="true" /> Excalidraw or Markdown file from the sidebar.<br />Right-click the sidebar to create a file.</p></div>}
+      {doc && !isMarkdown(doc.path) && <CanvasChat ref={chat} key={`chat:${doc.path}`} doc={doc} api={api} aiEnabled={!!generalSettings && generalSettings.aiEnabled !== false} aiPreview={aiPreview} slidesEnabled={generalSettings?.slidesEnabled} onSlides={() => setSlidesOpen(true)} onReplay={() => setReplayOpen(true)} onSettings={() => { if (!lockedRef.current) setSettingsOpen(true); }} recordingEnabled={generalSettings?.recordingEnabled} recording={recording} onRecord={handleRecordClick} onStopRecording={stopRecording} />}
     </section>
     {slidesOpen && <SlidePreview api={api} doc={doc} onClose={() => setSlidesOpen(false)} />}
     {replayOpen && generalSettings?.aiEnabled !== false && api && doc && <NarratedReplay key={doc.path} api={api} doc={doc} onGenerate={(text) => chat.current.generate(text)} onCancel={() => chat.current?.cancel()} onClose={() => setReplayOpen(false)} />}

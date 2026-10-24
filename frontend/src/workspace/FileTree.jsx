@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Folder, FolderOpen, PencilRuler } from "lucide-react";
+import { FileText, Folder, FolderOpen, PencilRuler } from "lucide-react";
 import { ReadDirectory } from "../../wailsjs/go/main/App";
 
 function RenameInput({ entry, onCommit, onCancel }) {
@@ -44,6 +44,7 @@ function TreeNode({ entry, activePath, selectedPath, editingPath, onOpen, onSele
   const [open, setOpen] = useState(false);
   const [children, setChildren] = useState(null);
   const FolderIcon = open ? FolderOpen : Folder;
+  const FileIcon = /\.(md|markdown)$/i.test(entry.name) ? FileText : PencilRuler;
 
   useEffect(() => {
     if (!entry.isDir || !open) return;
@@ -66,7 +67,7 @@ function TreeNode({ entry, activePath, selectedPath, editingPath, onOpen, onSele
   return <li>
     {entry.path === editingPath
       ? <div className="tree-row editing">
-          {entry.isDir ? <FolderIcon className="folder-icon" aria-hidden="true" /> : <PencilRuler className="file-icon" aria-hidden="true" />}
+          {entry.isDir ? <FolderIcon className="folder-icon" aria-hidden="true" /> : <FileIcon className="file-icon" aria-hidden="true" />}
           <RenameInput entry={entry} onCommit={onRename} onCancel={onCancelRename} />
         </div>
       : <button
@@ -75,7 +76,7 @@ function TreeNode({ entry, activePath, selectedPath, editingPath, onOpen, onSele
           onContextMenu={(event) => onMenu(event, entry)}
           title={entry.path}
         >
-          {entry.isDir ? <FolderIcon className="folder-icon" aria-hidden="true" /> : <PencilRuler className="file-icon" aria-hidden="true" />}
+          {entry.isDir ? <FolderIcon className="folder-icon" aria-hidden="true" /> : <FileIcon className="file-icon" aria-hidden="true" />}
           <span className="tree-name">{entry.name}</span>
         </button>}
     {entry.isDir && open && <FileTree

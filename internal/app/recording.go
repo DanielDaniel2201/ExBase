@@ -256,11 +256,14 @@ func copyRecording(source, destination string) error {
 func BeforeClose(a *App, ctx context.Context) bool {
 	a.recordingMu.Lock()
 	active := a.recordingID != ""
+	guard := a.closeGuard
 	a.recordingMu.Unlock()
 	if active {
 		runtime.EventsEmit(ctx, "recording:close-requested")
+	} else if guard {
+		runtime.EventsEmit(ctx, "workspace:close-requested")
 	}
-	return active
+	return active || guard
 }
 
 // SetRecordingWebcam configures webcam overlay for recording
