@@ -25,6 +25,9 @@ type App struct {
 	recordingName     string
 	recordingSaving   bool
 	closeGuard        bool
+	updateMu          sync.Mutex
+	updateBusy        bool
+	updateInstaller   string
 	recordingEncoder  *mp4Encoder
 	presentationMu    sync.Mutex
 	presentationMedia map[string]string
@@ -50,9 +53,13 @@ func (a *App) SetCloseGuard(enabled bool) {
 	a.recordingMu.Unlock()
 }
 
-func (a *App) ConfirmClose() {
+func (a *App) ConfirmClose() error {
+	if err := a.launchPendingUpdate(); err != nil {
+		return err
+	}
 	a.SetCloseGuard(false)
 	runtime.Quit(a.ctx)
+	return nil
 }
 
 // SaveGeneralSettings serializes disabling AI with starting a request.

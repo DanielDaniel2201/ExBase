@@ -11,6 +11,7 @@ import { parseScene } from "./canvas/scene";
 import { reconcileMermaid } from "./canvas/mermaid";
 import { CanvasChat } from "./canvas/CanvasChat";
 import { SettingsModal } from "./settings/SettingsModal";
+import { useUpdates } from "./settings/useUpdates";
 import { SlidePreview } from "./slides/SlidePreview";
 import { useRecording } from "./recording/useRecording";
 import { NarratedReplay } from "./presentation/NarratedReplay";
@@ -29,6 +30,8 @@ function isSameOrChild(path, parent) {
 }
 
 export default function App() {
+  const updates = useUpdates();
+  const [updateDismissed, setUpdateDismissed] = useState(false);
   const [workspace, setWorkspace] = useState(null);
   const [folders, setFolders] = useState([]);
   const [entries, setEntries] = useState([]);
@@ -445,7 +448,8 @@ export default function App() {
 
   if (!workspace) return <main className="welcome-shell">
     <Titlebar>{settingsButton()}{recordingStatus()}</Titlebar>
-    {settingsOpen && <SettingsModal generalSettings={generalSettings} onGeneralSettings={setGeneralSettings} recordingActive={recording.phase !== "idle"} onClose={() => setSettingsOpen(false)} />}
+    {updates.release?.available && !updateDismissed && !settingsOpen && recording.phase === "idle" && <div className="update-notice" role="status"><span>ExBase {updates.release.version} is available.</span><button type="button" onClick={() => setSettingsOpen(true)}>View update</button><button type="button" aria-label="Dismiss update" onClick={() => setUpdateDismissed(true)}><X size={14} aria-hidden="true" /></button></div>}
+    {settingsOpen && <SettingsModal updates={updates} generalSettings={generalSettings} onGeneralSettings={setGeneralSettings} recordingActive={recording.phase !== "idle"} onClose={() => setSettingsOpen(false)} />}
     <div className="welcome">
       <h1>ExBase</h1>
       <p>Open a folder containing Excalidraw or Markdown files.</p>
@@ -534,6 +538,7 @@ export default function App() {
         onExport={saveRecording}
       />
     )}
-    {settingsOpen && <SettingsModal generalSettings={generalSettings} onGeneralSettings={setGeneralSettings} recordingActive={recording.phase !== "idle"} onClose={() => setSettingsOpen(false)} />}
+    {updates.release?.available && !updateDismissed && !settingsOpen && recording.phase === "idle" && <div className="update-notice" role="status"><span>ExBase {updates.release.version} is available.</span><button type="button" onClick={() => setSettingsOpen(true)}>View update</button><button type="button" aria-label="Dismiss update" onClick={() => setUpdateDismissed(true)}><X size={14} aria-hidden="true" /></button></div>}
+    {settingsOpen && <SettingsModal updates={updates} generalSettings={generalSettings} onGeneralSettings={setGeneralSettings} recordingActive={recording.phase !== "idle"} onClose={() => setSettingsOpen(false)} />}
   </main>;
 }

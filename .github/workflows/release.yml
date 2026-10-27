@@ -1,0 +1,66 @@
+name: Windows release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install build tools
+        shell: pwsh
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+          if ($LASTEXITCODE -ne 0) { throw 'Wails installation failed.' }
+          choco install nsis --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS installation failed.' }
+      - name: Install and test frontend
+        working-directory: frontend
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend installation failed.' }
+          npm test
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend tests failed.' }
+      - name: Package release
+        shell: pwsh
+        run: ./scripts/build-release.ps1 -Version "0.1.${{ github.run_number }}" -Commit "${{ github.sha }}"
+      - name: Build native recording and test backend
+        shell: pwsh
+        run: |
+          ./scripts/build-recording.ps1 -Check
+          go test ./...
+          if ($LASTEXITCODE -ne 0) { throw 'Backend tests failed.' }
+      - name: Publish complete release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $head = gh api repos/${{ github.repository }}/git/ref/heads/main --jq .object.sha
+          if ($LASTEXITCODE -ne 0) { throw 'Could not check the current main revision.' }
+          if ($head -ne '${{ github.sha }}') { Write-Host 'A newer main revision will be released; skipping this older build.'; exit 0 }
+          $tag = 'v0.1.${{ github.run_number }}'
+          $exists = gh release view $tag --json id 2>$null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists; refusing to replace it." }
+          gh release create $tag build/bin/ExBase-Setup.exe build/bin/ExBase.exe --target '${{ github.sha }}' --draft --title "ExBase $tag" --notes 'Windows x64 release. Install ExBase-Setup.exe; existing installations can update from Settings.'
+          if ($LASTEXITCODE -ne 0) { throw 'Release upload failed.' }
+          gh release edit $tag --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed.' }

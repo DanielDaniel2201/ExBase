@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { ChevronRight, Lock } from "lucide-react";
 import { LoadPromptTemplates, SavePromptTemplates, SaveGeneralSettings } from "../../wailsjs/go/main/App";
 import { AIProviders } from "./AIProviders";
+import { UpdateSettings } from "./UpdateSettings";
 
 function RecordingAreaPreview({ mode }) {
   const entire = mode === "app";
@@ -41,7 +42,7 @@ function TemplateEditor({ template, isNew, saving, error, onSave, onDelete, onCl
   </dialog>;
 }
 
-export function SettingsModal({ onClose, generalSettings, onGeneralSettings, recordingActive = false }) {
+export function SettingsModal({ onClose, generalSettings, onGeneralSettings, recordingActive = false, updates }) {
   const dialog = useRef();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -111,6 +112,7 @@ export function SettingsModal({ onClose, generalSettings, onGeneralSettings, rec
           </fieldset>
           <label className="general-toggle"><span><strong>Keep recording on cancel</strong><small>When enabled, canceling Save keeps the video in ~/.exbase/recordings. When disabled, it discards the video.</small></span><input type="checkbox" role="switch" aria-label="Keep recording on cancel" checked={!!generalSettings?.keepRecordingOnCancel} disabled={!generalSettings?.recordingEnabled || recordingActive} onChange={(event) => saveGeneral({ keepRecordingOnCancel: event.target.checked })} /></label>
           {recordingActive && <p className="template-help">Stop recording to change recording settings.</p>}
+          <UpdateSettings updates={updates} recordingActive={recordingActive} />
         </> : <>
         <label className="general-toggle"><span><strong>Enable AI features</strong><small>Show AI chat and narrated replay. Turning this off stops active AI requests and keeps your configuration.</small></span><input type="checkbox" role="switch" aria-label="Enable AI features" checked={!!generalSettings && generalSettings.aiEnabled !== false} disabled={!generalSettings || saving} onChange={(event) => saveGeneral({ aiEnabled: event.target.checked })} /></label>
         {generalSettings?.aiEnabled !== false && <div className="ai-feature-settings">
