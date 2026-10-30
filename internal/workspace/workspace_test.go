@@ -3,8 +3,62 @@ package workspace
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestSaveRejectsExternalChanges(t *testing.T) {
+	for _, extension := range []string{".excalidraw", ".md"} {
+		t.Run(extension, func(t *testing.T) {
+			root := t.TempDir()
+			app := New(root)
+			path := filepath.Join(root, "document"+extension)
+			if err := os.WriteFile(path, []byte("old"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			opened, err := app.OpenDocument(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Same size and timestamp: mtime alone would miss this external edit.
+			if err := os.WriteFile(path, []byte("new"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+				t.Fatal(err)
+			}
+			for range 2 {
+				if _, err := app.Save(path, "stale local edits", opened.Version); err == nil || !strings.Contains(err.Error(), "EXBASE_FILE_CHANGED") {
+					t.Fatalf("expected repeated conflict, got %v", err)
+				}
+			}
+			current, err := app.OpenDocument(path)
+			if err != nil || current.Data != "new" {
+				t.Fatalf("external data lost: %#v, %v", current, err)
+			}
+			if _, err := app.Save(path, "bypass", ""); err == nil {
+				t.Fatal("missing version bypassed conflict protection")
+			}
+			version, err := app.Save(path, "after reload", current.Version)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := app.Save(path, "next save", version); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := app.Save(path, "late save", version); err == nil {
+				t.Fatal("deleted file was recreated")
+			}
+		})
+	}
+}
 
 func TestWorkspaceBoundary(t *testing.T) {
 	root := t.TempDir()
@@ -123,10 +177,11 @@ func TestMarkdownLifecycle(t *testing.T) {
 		t.Fatalf("expected a unique name: %#v, %v", second, err)
 	}
 	content := "# 笔记\n\n- [x] **完成**\n\n```go\nfmt.Println(1)\n```\n"
-	if err := app.Save(first.Path, content); err != nil {
+	version, err := app.Save(first.Path, content, first.Version)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := app.Save(first.Path, content+"\nUpdated\n"); err != nil {
+	if _, err := app.Save(first.Path, content+"\nUpdated\n", version); err != nil {
 		t.Fatal(err)
 	}
 	renamed, err := app.Rename(first.Path, "笔记")
@@ -157,7 +212,7 @@ func TestMarkdownLifecycle(t *testing.T) {
 		if _, err := app.OpenDocument(path); err == nil {
 			t.Fatal("unsupported or outside file was opened")
 		}
-		if err := app.Save(path, "bad"); err == nil {
+		if _, err := app.Save(path, "bad", ""); err == nil {
 			t.Fatal("unsupported or outside file was saved")
 		}
 		if _, err := app.Rename(path, "bad"); err == nil {
@@ -173,7 +228,7 @@ func TestMarkdownLifecycle(t *testing.T) {
 	if err := app.DeleteEntry(renamed.Path); err != nil {
 		t.Fatal(err)
 	}
-	if err := app.Save(renamed.Path, "late autosave"); err == nil {
+	if _, err := app.Save(renamed.Path, "late autosave", version); err == nil {
 		t.Fatal("autosave must not recreate a deleted file")
 	}
 	folder, err := app.CreateFolder(root)
@@ -210,7 +265,7 @@ func TestWorkspaceRejectsLinkedDocuments(t *testing.T) {
 	if _, err := app.CreateMarkdown(link); err == nil {
 		t.Fatal("file was created through a link outside the workspace")
 	}
-	if err := app.Save(filepath.Join(link, "private.md"), "bad"); err == nil {
+	if _, err := app.Save(filepath.Join(link, "private.md"), "bad", ""); err == nil {
 		t.Fatal("file was saved through a link outside the workspace")
 	}
 }

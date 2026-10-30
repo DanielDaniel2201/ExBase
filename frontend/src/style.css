@@ -62,6 +62,8 @@ nav > .tree { padding-left: 8px; }
 .error { color: #b3261e !important; }
 .canvas { position: relative; min-width: 0; min-height: 0; grid-column: 2; grid-row: 2; }
 .sidebar-collapsed .canvas { grid-column: 1; }
+.file-conflict { position: absolute; z-index: 10; top: 12px; left: 12px; right: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid #bbb; border-radius: 6px; background: #f7f7f8; color: #444; font-size: 13px; box-shadow: 0 2px 8px #0002; }
+.file-conflict button { flex-shrink: 0; padding: 5px 8px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
 .blank { height: 100%; display: grid; place-content: center; color: #888; text-align: center; }
 .blank p { line-height: 1.5; }
 .blank .file-icon { display: inline-block; margin-right: 2px; vertical-align: -3px; }

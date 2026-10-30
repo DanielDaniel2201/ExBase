@@ -2,14 +2,17 @@ package workspace
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"exbase/internal/fileio"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -18,11 +21,13 @@ type Workspace struct {
 	ctx     context.Context
 	root    string
 	folders []string
+	saveMu  sync.Mutex
 }
 
 type Document struct {
-	Path string `json:"path"`
-	Data string `json:"data"`
+	Path    string `json:"path"`
+	Data    string `json:"data"`
+	Version string `json:"version"`
 }
 
 type FileEntry struct {
@@ -164,7 +169,7 @@ func (a *Workspace) OpenDocument(path string) (Document, error) {
 		return Document{}, errors.New("only regular document files can be opened")
 	}
 	data, err := os.ReadFile(path)
-	return Document{Path: path, Data: string(data)}, err
+	return Document{Path: path, Data: string(data), Version: documentVersion(data)}, err
 }
 
 func (a *Workspace) CreateDocument(dir string) (Document, error) {
@@ -194,7 +199,7 @@ func (a *Workspace) createDocument(dir, ext, data string) (Document, error) {
 	if err := file.Close(); err != nil {
 		return Document{}, err
 	}
-	return Document{Path: path, Data: data}, nil
+	return Document{Path: path, Data: data, Version: documentVersion([]byte(data))}, nil
 }
 
 func (a *Workspace) CreateFolder(dir string) (FileEntry, error) {
@@ -291,18 +296,34 @@ func createUnique(dir, name, ext string, directory bool) (string, *os.File, erro
 	}
 }
 
-func (a *Workspace) Save(path, data string) error {
+func documentVersion(data []byte) string {
+	return fmt.Sprintf("%x", sha256.Sum256(data))
+}
+
+func (a *Workspace) Save(path, data, expectedVersion string) (string, error) {
+	a.saveMu.Lock()
+	defer a.saveMu.Unlock()
 	if !a.contains(path) || !isDocument(path) {
-		return errors.New("file is outside the open workspace or is not an Excalidraw or Markdown file")
+		return "", errors.New("file is outside the open workspace or is not an Excalidraw or Markdown file")
 	}
 	info, err := os.Lstat(path)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if !info.Mode().IsRegular() {
-		return errors.New("only regular document files can be saved")
+		return "", errors.New("only regular document files can be saved")
 	}
-	return fileio.Replace(path, []byte(data))
+	current, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	if expectedVersion == "" || documentVersion(current) != expectedVersion {
+		return "", errors.New("EXBASE_FILE_CHANGED: This file changed on disk. Your edits are still open and have not overwritten the disk file.")
+	}
+	if err := fileio.Replace(path, []byte(data)); err != nil {
+		return "", err
+	}
+	return documentVersion([]byte(data)), nil
 }
 
 func isDocument(path string) bool {

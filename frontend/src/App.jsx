@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { PanelLeftClose, PanelLeftOpen, PencilRuler, Settings, X } from "lucide-react";
-import { CaptureUpdateAction, Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
+import { CaptureUpdateAction, Excalidraw, restore, serializeAsJSON } from "@excalidraw/excalidraw";
 import {
   ChooseFolder, ConfirmClose, CreateDocument, CreateMarkdown, CreateFolder, DeleteEntry, OpenDocument, ReadDirectory, Rename, Save, SetCloseGuard, SwitchFolder, Workspaces, LoadGeneralSettings,
 } from "../wailsjs/go/main/App";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import { FileTree } from "./workspace/FileTree";
 import { Titlebar } from "./workspace/Titlebar";
+import { documentPersistence } from "./workspace/persistence";
 import { parseScene } from "./canvas/scene";
 import { reconcileMermaid } from "./canvas/mermaid";
 import { CanvasChat } from "./canvas/CanvasChat";
@@ -38,6 +39,7 @@ export default function App() {
   const [doc, setDoc] = useState(null);
   const [fileBusy, setFileBusy] = useState(false);
   const [markdownError, setMarkdownError] = useState("");
+  const [fileConflict, setFileConflict] = useState(false);
   const [api, setApi] = useState(null);
   const [status, setStatus] = useState("");
   const [contextMenu, setContextMenu] = useState(null);
@@ -54,7 +56,7 @@ export default function App() {
   const [recordingMode, setRecordingMode] = useState(null);
   const picker = useRef();
   const autosaveTimer = useRef();
-  const lastSaved = useRef("");
+  const documentGeneration = useRef(0);
   const markdownText = useRef("");
   const saveQueue = useRef(Promise.resolve());
   const saveRevision = useRef(0);
@@ -153,7 +155,7 @@ export default function App() {
     setEditingPath(null);
     setContextMenu(null);
     setRevealPath(null);
-    lastSaved.current = "";
+    setFileConflict(false);
     const items = await ReadDirectory(state.current);
     setEntries(items);
     setStatus("");
@@ -188,6 +190,7 @@ export default function App() {
   }
 
   async function openDocument(path) {
+    if (path === doc?.path && fileConflict) { await reloadDocument(); return; }
     if (!beginFileOperation()) return;
     try {
       await save();
@@ -205,17 +208,35 @@ export default function App() {
   function activateDocument(file) {
     clearTimeout(autosaveTimer.current);
     const markdown = isMarkdown(file.path);
-    const scene = markdown ? null : parseScene(file.data);
-    lastSaved.current = markdown ? file.data : serializeAsJSON(scene.elements, scene.appState || {}, scene.files || {}, "local");
+    const scene = markdown ? null : restore(parseScene(file.data), null, null, { repairBindings: true });
+    const saved = markdown ? file.data : serializeAsJSON(scene.elements, scene.appState, scene.files, "local");
+    const persistence = documentPersistence(file.version, saved, (data, version) => Save(file.path, data, version));
     markdownText.current = markdown ? file.data : "";
     setMarkdownError("");
+    setFileConflict(false);
     setApi(null);
     canvasRef.current = null;
     setSlidesOpen(false);
     setReplayOpen(false);
-    const next = markdown ? { path: file.path, content: file.data } : { path: file.path, scene };
+    const next = { path: file.path, key: ++documentGeneration.current, persistence, ...(markdown ? { content: file.data } : { scene }) };
     documentRef.current = next;
     setDoc(next);
+  }
+
+  async function reloadDocument() {
+    if (!beginFileOperation()) return;
+    try {
+      if (!window.confirm("Reload the file from disk? This discards the edits currently open in ExBase.")) return;
+      clearTimeout(autosaveTimer.current);
+      await saveQueue.current.catch(() => {});
+      const file = await OpenDocument(documentRef.current.path);
+      activateDocument(file);
+      setStatus("");
+    } catch (error) {
+      setStatus(String(error));
+    } finally {
+      endFileOperation();
+    }
   }
 
   async function refreshTree(dir) {
@@ -308,14 +329,14 @@ export default function App() {
         setApi(null);
         documentRef.current = null;
         canvasRef.current = null;
-        lastSaved.current = "";
+        setFileConflict(false);
       }
       if (isSameOrChild(editingPath, entry.path)) setEditingPath(null);
       setSelectedEntry(null);
       await refreshTree("");
       setStatus("");
     } catch (error) {
-      if (deletesCurrent && isMarkdown(doc.path)) scheduleSave(doc.path, markdownText.current);
+      if (deletesCurrent && isMarkdown(doc.path)) scheduleSave(doc, markdownText.current);
       else if (deletesCurrent && api) autosave(api.getSceneElements(), api.getAppState(), api.getFiles());
       setStatus(String(error));
     } finally {
@@ -341,19 +362,20 @@ export default function App() {
       const elements = aiPreview.current?.api === api ? aiPreview.current.original : api.getSceneElements();
       data = serializeAsJSON(reconcileMermaid(elements), api.getAppState(), api.getFiles(), "local");
     }
-    await persist(doc.path, data);
+    await persist(doc, data);
     if (saveRevision.current === revision) {
-      lastSaved.current = data;
       setStatus("Saved");
     }
   }
 
-  function persist(path, data) {
-    const pending = saveQueue.current.catch(() => {}).then(() => Save(path, data));
+  function persist(doc, data) {
+    const { path } = doc;
+    const pending = doc.persistence.save(data);
     saveQueue.current = pending;
     return pending.then(() => {
       if (documentRef.current?.path === path) setMarkdownError("");
     }, (error) => {
+      if (String(error).includes("EXBASE_FILE_CHANGED") && documentRef.current?.persistence === doc.persistence) setFileConflict(true);
       if (isMarkdown(path) && documentRef.current?.path === path) setMarkdownError(String(error));
       throw error;
     });
@@ -367,18 +389,18 @@ export default function App() {
     markdownText.current = content;
     setDoc((current) => ({ ...current, content }));
     setStatus("Unsaved");
-    scheduleSave(doc.path, content);
+    scheduleSave(doc, content);
   }
 
-  function scheduleSave(path, data) {
+  function scheduleSave(doc, data) {
     clearTimeout(autosaveTimer.current);
     const revision = ++saveRevision.current;
+    if (data === doc.persistence.saved && !doc.persistence.pending) return;
     autosaveTimer.current = setTimeout(async () => {
       try {
         setStatus("Saving...");
-        await persist(path, data);
+        await persist(doc, data);
         if (saveRevision.current === revision) {
-          lastSaved.current = data;
           setStatus("Saved");
         }
       } catch (error) {
@@ -388,6 +410,7 @@ export default function App() {
   }
 
   function autosave(elements, appState, files) {
+    if (!doc || documentRef.current?.persistence !== doc.persistence) return;
     if (aiPreview.current?.api === api) { clearTimeout(autosaveTimer.current); return; }
     const reconciled = reconcileMermaid(elements);
     if (reconciled !== elements && api) {
@@ -396,8 +419,7 @@ export default function App() {
     }
     elements = reconciled;
     const data = serializeAsJSON(elements, appState, files, "local");
-    if (data === lastSaved.current) return;
-    scheduleSave(doc.path, data);
+    scheduleSave(doc, data);
   }
 
   function renderWorkspacePicker() {
@@ -520,10 +542,11 @@ export default function App() {
     <section className="canvas" aria-busy={fileBusy} inert={slidesOpen || fileBusy ? "" : undefined}>
       {doc
         ? isMarkdown(doc.path)
-          ? <MarkdownEditor key={`markdown:${doc.path}`} content={doc.content} onChange={changeMarkdown} onSave={saveNow} error={markdownError} />
-          : <Excalidraw key={`canvas:${doc.path}`} initialData={{ ...doc.scene, scrollToContent: true }} viewModeEnabled={slidesOpen} excalidrawAPI={setApi} onChange={autosave} />
+          ? <MarkdownEditor key={`markdown:${doc.key}`} content={doc.content} onChange={changeMarkdown} onSave={saveNow} error={markdownError} />
+          : <Excalidraw key={`canvas:${doc.key}`} initialData={{ ...doc.scene, scrollToContent: true }} viewModeEnabled={slidesOpen} excalidrawAPI={setApi} onChange={autosave} />
         : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an <PencilRuler className="file-icon" aria-hidden="true" /> Excalidraw or Markdown file from the sidebar.<br />Right-click the sidebar to create a file.</p></div>}
-      {doc && !isMarkdown(doc.path) && <CanvasChat ref={chat} key={`chat:${doc.path}`} doc={doc} api={api} aiEnabled={!!generalSettings && generalSettings.aiEnabled !== false} aiPreview={aiPreview} slidesEnabled={generalSettings?.slidesEnabled} onSlides={() => setSlidesOpen(true)} onReplay={() => setReplayOpen(true)} onSettings={() => { if (!lockedRef.current) setSettingsOpen(true); }} recordingEnabled={generalSettings?.recordingEnabled} recording={recording} onRecord={handleRecordClick} onStopRecording={stopRecording} />}
+      {doc && !isMarkdown(doc.path) && <CanvasChat ref={chat} key={`chat:${doc.key}`} doc={doc} api={api} aiEnabled={!!generalSettings && generalSettings.aiEnabled !== false} aiPreview={aiPreview} slidesEnabled={generalSettings?.slidesEnabled} onSlides={() => setSlidesOpen(true)} onReplay={() => setReplayOpen(true)} onSettings={() => { if (!lockedRef.current) setSettingsOpen(true); }} recordingEnabled={generalSettings?.recordingEnabled} recording={recording} onRecord={handleRecordClick} onStopRecording={stopRecording} />}
+      {fileConflict && <div className="file-conflict" role="alert"><span>This file changed on disk. Saving is blocked; your edits are still open.</span><button type="button" disabled={locked || fileBusy} onClick={reloadDocument}>Reload from disk…</button></div>}
     </section>
     {slidesOpen && <SlidePreview api={api} doc={doc} onClose={() => setSlidesOpen(false)} />}
     {replayOpen && generalSettings?.aiEnabled !== false && api && doc && <NarratedReplay key={doc.path} api={api} doc={doc} onGenerate={(text) => chat.current.generate(text)} onCancel={() => chat.current?.cancel()} onClose={() => setReplayOpen(false)} />}

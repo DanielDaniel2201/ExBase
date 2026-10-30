@@ -12,7 +12,7 @@ const path = require('node:path');
       page.on('dialog', dialog => dialog.accept());
       await page.addInitScript(({ installed }) => {
         window.check = { checks: 0, installs: 0, saves: 0, closes: 0, failCheck: false, failSave: false, available: true, listeners: new Map() };
-        const doc = { path: 'D:\\check\\Notes.md', data: '# Fixture' };
+        const doc = { path: 'D:\\check\\Notes.md', data: '# Fixture', version: '# Fixture' };
         window.go = { main: { App: {
           GetUpdateInfo: async () => ({ version: installed ? '0.1.1' : 'dev', installed }),
           CheckForUpdates: async () => { window.check.checks++; if (window.check.failCheck) throw Error('Network unavailable'); return { available: window.check.available, version: '0.1.2' }; },
@@ -20,7 +20,7 @@ const path = require('node:path');
           SetCloseGuard: async () => {}, ConfirmClose: async () => { window.check.closes++; },
           Workspaces: async () => ({ current: 'D:\\check', folders: ['D:\\check'] }),
           ReadDirectory: async () => [{ path: doc.path, name: 'Notes.md', isDir: false }], OpenDocument: async () => doc,
-          Save: async () => { window.check.saves++; if (window.check.failSave) throw Error('Disk full'); },
+          Save: async (path, data, version) => { window.check.saves++; if (window.check.failSave) throw Error('Disk full'); if (version !== doc.version) throw Error('EXBASE_FILE_CHANGED'); doc.data = data; return doc.version = data; },
           LoadGeneralSettings: async () => ({ slidesEnabled: false, recordingEnabled: false, aiEnabled: false }), LoadPromptTemplates: async () => [],
         } } };
         window.runtime = {

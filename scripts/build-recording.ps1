@@ -39,10 +39,12 @@ try {
 
     $environmentScript = Join-Path $visualStudioPath 'Common7\Tools\VsDevCmd.bat'
     # Only the compiler environment uses cmd. No filesystem operations cross shells.
-    $compilerEnvironment = & $env:ComSpec /d /s /c "`"`"$environmentScript`" -arch=amd64 >nul && set`""
+    $compilerEnvironment = & $env:ComSpec /d /c "call `"$environmentScript`" -arch=amd64 >nul && set"
+    if ($LASTEXITCODE -ne 0) { throw 'Visual Studio compiler environment initialization failed.' }
     foreach ($line in $compilerEnvironment) {
         if ($line -match '^([^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process') }
     }
+    if (!(Get-Command cl.exe -ErrorAction SilentlyContinue)) { throw 'Visual Studio compiler environment did not provide cl.exe.' }
     $nativeBuildPath = Join-Path $projectRoot '.tools\recording-build'
     New-Item -ItemType Directory -Path $nativeBuildPath -Force | Out-Null
     $libraries = @('mfplat.lib', 'mfreadwrite.lib', 'mfuuid.lib', 'ole32.lib', 'windowsapp.lib', 'd3d11.lib', 'dxgi.lib', 'windowscodecs.lib', 'user32.lib')

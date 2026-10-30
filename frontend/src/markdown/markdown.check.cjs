@@ -9,7 +9,8 @@ const path = require('node:path');
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    page.on('dialog', dialog => dialog.dismiss());
+    const dismissDialog = dialog => dialog.dismiss();
+    page.on('dialog', dismissDialog);
     await page.addInitScript(() => {
       const root = 'D:\\check';
       const files = new Map([
@@ -25,12 +26,12 @@ const path = require('node:path');
       const create = (dir, ext) => {
         let p = dir + '\\Untitled' + ext;
         for (let i = 2; files.has(p); i++) p = dir + '\\Untitled ' + i + ext;
-        files.set(p, ''); return { path: p, data: '' };
+        files.set(p, ''); return { path: p, data: '', version: '' };
       };
       window.go = { main: { App: {
         Workspaces: async () => ({ current: root, folders: [root] }),
         ReadDirectory: async dir => [...dirs].filter(p => p !== root && parent(p) === dir).map(p => entry(p, true)).concat([...files.keys()].filter(p => parent(p) === dir).map(p => entry(p))),
-        OpenDocument: async p => { if (!files.has(p)) throw Error('File missing'); return { path: p, data: files.get(p) }; },
+        OpenDocument: async p => { if (!files.has(p)) throw Error('File missing'); return { path: p, data: files.get(p), version: files.get(p) }; },
         CreateMarkdown: async dir => create(dir, '.md'),
         Rename: async (p, name) => {
           const isDir = dirs.has(p), ext = /\.[^.]+$/.exec(p)?.[0];
@@ -42,12 +43,14 @@ const path = require('node:path');
           return entry(target, isDir);
         },
         DeleteEntry: async p => { for (const old of [...files.keys()]) if (old === p || old.startsWith(p + '\\')) files.delete(old); },
-        Save: async (p, data) => {
+        Save: async (p, data, version) => {
           window.check.saves.push({ p, data });
           if (window.check.delay) await new Promise(resolve => setTimeout(resolve, window.check.delay));
           if (window.check.failSave) throw Error('Disk is full');
           if (!files.has(p)) throw Error('Save tried to recreate a deleted file');
+          if (files.get(p) !== version) throw Error('EXBASE_FILE_CHANGED');
           files.set(p, data);
+          return data;
         },
         SetCloseGuard: async enabled => { window.check.guarded = enabled; },
         ConfirmClose: async () => { window.check.closed++; },
@@ -78,6 +81,30 @@ const path = require('node:path');
     assert.equal(await page.locator('.canvas-chat, .markdown-save, .markdown-modes, .markdown-source, .markdown-preview').count(), 0);
     assert.equal(await page.getByRole('button', { name: /Save Markdown|Edit Markdown|Edit and preview|Read Markdown/ }).count(), 0);
     assert.equal(await page.evaluate(() => window.check.files.get('D:\\check\\Welcome.md')), '# Welcome\n\nA **Markdown** note.');
+    // External edits survive a pristine reopen, while local edits stop on conflict.
+    const pristineWrites = await page.evaluate(() => window.check.saves.length);
+    await page.evaluate(() => window.check.files.set('D:\\check\\Welcome.md', '# External note'));
+    await open('Welcome.md');
+    await page.getByRole('heading', { name: 'External note', exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => window.check.saves.length), pristineWrites);
+    await source.fill('Local unsaved edit');
+    await page.evaluate(() => window.check.files.set('D:\\check\\Welcome.md', '# External latest'));
+    await source.press('Control+s');
+    await page.locator('.file-conflict').waitFor();
+    await open('Drawing.excalidraw');
+    assert.equal(await source.textContent(), 'Local unsaved edit', 'a conflicting switch keeps local edits open');
+    assert.equal(await page.evaluate(() => window.check.files.get('D:\\check\\Welcome.md')), '# External latest');
+    await page.getByRole('button', { name: 'Reload from disk…' }).click();
+    assert.equal(await source.textContent(), 'Local unsaved edit', 'canceling reload preserves local edits');
+    page.removeListener('dialog', dismissDialog);
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: 'Reload from disk…' }).click();
+    page.on('dialog', dismissDialog);
+    await page.getByRole('heading', { name: 'External latest', exact: true }).waitFor();
+    assert.equal(await page.locator('.file-conflict').count(), 0);
+    await page.evaluate(() => window.check.files.set('D:\\check\\Welcome.md', '# Welcome\n\nA **Markdown** note.'));
+    await open('Welcome.md');
+    await page.getByRole('heading', { name: 'Welcome', exact: true }).waitFor();
     const text = '# \u6211\u7684\u7b14\u8bb0\n\n## Markdown basics\n\n**Bold** and *italic* and ~~deleted~~.\n\n- Item\n- [x] Done\n\n1. Ordered\n\n> Quote\n\n```js\nconst a = 1;\n```\n\n| Name | Value |\n| --- | --- |\n| Test | 42 |\n\n[Example](https://example.com)\n\n---';
     await paste(text);
     await page.getByRole('heading', { name: '\u6211\u7684\u7b14\u8bb0', exact: true }).waitFor();
@@ -95,7 +122,13 @@ const path = require('node:path');
     await page.getByRole('link', { name: 'Example', exact: true }).click({ modifiers: ['Control'] });
     assert.deepEqual(await page.evaluate(() => window.check.openedURLs), ['https://example.com']);
     await page.screenshot({ path: path.resolve(__dirname, '../../../.tools/ui-check/markdown-wysiwyg.png') });
+    const beforeCanvas = await page.evaluate(() => window.check.saves.length);
     await open('Drawing.excalidraw'); await page.locator('.excalidraw').waitFor();
+    await page.waitForTimeout(800); // Let the initial 600 ms autosave debounce expire.
+    assert.equal(await page.evaluate(() => window.check.saves.length), beforeCanvas, 'canvas initialization must not write');
+    await open('Drawing.excalidraw');
+    await page.waitForTimeout(800);
+    assert.equal(await page.evaluate(() => window.check.saves.length), beforeCanvas, 'reopening an unchanged canvas must not write');
     await open('Welcome.md');
     await page.getByRole('heading', { name: '\u6211\u7684\u7b14\u8bb0 \u00b7 \u4fee\u6539', exact: true }).waitFor();
     assert.equal(await source.locator('table').count(), 1);
