@@ -50,7 +50,7 @@ try {
     $libraries = @('mfplat.lib', 'mfreadwrite.lib', 'mfuuid.lib', 'ole32.lib', 'windowsapp.lib', 'd3d11.lib', 'dxgi.lib', 'windowscodecs.lib', 'user32.lib')
     if ($needsBuild) {
         $compiledLibraryPath = Join-Path $nativeBuildPath 'recording.dll'
-        & cl.exe /nologo /std:c++17 /EHsc /O2 /MT /LD /DUNICODE /D_UNICODE $sourcePath "/Fo$nativeBuildPath\recording.obj" /link "/OUT:$compiledLibraryPath" "/IMPLIB:$nativeBuildPath\recording.lib" $libraries
+        & cl.exe /nologo /std:c++20 /EHsc /O2 /MT /LD /DUNICODE /D_UNICODE $sourcePath "/Fo$nativeBuildPath\recording.obj" /link "/OUT:$compiledLibraryPath" "/IMPLIB:$nativeBuildPath\recording.lib" $libraries
         if ($LASTEXITCODE -ne 0) { throw 'Native recording compilation failed.' }
         # Publish atomically; HMR and binding generation must never embed a partial DLL.
         $temporaryLibraryPath = "$outputPath.tmp"
@@ -60,7 +60,7 @@ try {
     }
     if ($Check) {
         $checkSourcePath = Join-Path $projectRoot 'internal\app\native\recording.check.cpp'
-        & cl.exe /nologo /std:c++17 /EHsc /O2 /MT /DUNICODE /D_UNICODE $checkSourcePath "/Fo$nativeBuildPath\recording.check.obj" /link "/OUT:$nativeBuildPath\recording-check.exe" "/IMPLIB:$nativeBuildPath\recording-check.lib" $libraries
+        & cl.exe /nologo /std:c++20 /EHsc /O2 /MT /DUNICODE /D_UNICODE $checkSourcePath "/Fo$nativeBuildPath\recording.check.obj" /link "/OUT:$nativeBuildPath\recording-check.exe" "/IMPLIB:$nativeBuildPath\recording-check.lib" $libraries
         if ($LASTEXITCODE -ne 0) { throw 'Native recording check compilation failed.' }
         & "$nativeBuildPath\recording-check.exe" fixture "$nativeBuildPath\tone.mp4"
         if ($LASTEXITCODE -ne 0) { throw 'Native MP4 audio/video integration check failed.' }

@@ -32,7 +32,7 @@ echo Setting up build environment...
 call "%VCVARS_FOUND%" >nul 2>&1
 
 echo Compiling recording.dll...
-cl /LD /EHsc /std:c++17 /O2 /MT recording.cpp /link /OUT:recording.dll mfplat.lib mfreadwrite.lib mfuuid.lib windowsapp.lib ole32.lib oleaut32.lib windowscodecs.lib d3d11.lib dxgi.lib
+cl /LD /EHsc /std:c++20 /O2 /MT recording.cpp /link /OUT:recording.dll mfplat.lib mfreadwrite.lib mfuuid.lib windowsapp.lib ole32.lib oleaut32.lib windowscodecs.lib d3d11.lib dxgi.lib
 
 if errorlevel 1 (
     echo.
