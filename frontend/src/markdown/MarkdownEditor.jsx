@@ -34,6 +34,7 @@ export function MarkdownEditor({ content, onChange, onSave, error }) {
     extensions,
     content,
     contentType: "markdown",
+    autofocus: content === "" ? "start" : false,
     shouldRerenderOnTransaction: false,
     onUpdate: ({ editor }) => onChange(editor.getMarkdown()),
     editorProps: {

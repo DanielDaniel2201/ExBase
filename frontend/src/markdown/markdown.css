@@ -16,8 +16,8 @@
 .markdown-outline-link[aria-current="location"] { color: #333; border-left-color: #777; font-weight: 500; }
 .markdown-outline-link:focus-visible { outline: 1px solid #888; outline-offset: -1px; }
 .markdown-page { flex: 1; min-width: 0; min-height: 0; padding: 36px 32px; overflow: auto; scrollbar-gutter: stable; color: #333; font-size: 15px; line-height: 1.8; overflow-wrap: anywhere; }
-.markdown-content { min-height: 100%; }
-.markdown-prose { max-width: 760px; min-height: 100%; margin: 0 auto; outline: none; white-space: pre-wrap; }
+.markdown-content { display: flex; flex-direction: column; min-height: 100%; }
+.markdown-prose { flex: 1; width: 100%; max-width: 760px; min-height: 100%; margin: 0 auto; outline: none; white-space: pre-wrap; }
 .markdown-prose > :first-child { margin-top: 0; }
 .markdown-prose h1, .markdown-prose h2, .markdown-prose h3, .markdown-prose h4, .markdown-prose h5, .markdown-prose h6 { margin: 1.4em 0 .6em; line-height: 1.35; font-weight: 600; }
 .markdown-prose h1 { font-size: 2em; }

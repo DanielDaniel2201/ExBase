@@ -254,7 +254,7 @@ export default function App() {
       await refreshTree(dir);
       activateDocument(file);
       setSelectedEntry({ name: basename(file.path), path: file.path, isDir: false });
-      setEditingPath(file.path);
+      setEditingPath(markdown ? null : file.path);
       setStatus("");
     } catch (error) {
       setStatus(String(error));
