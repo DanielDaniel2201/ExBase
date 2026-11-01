@@ -251,6 +251,42 @@ func (a *Workspace) Rename(path, name string) (FileEntry, error) {
 	return entry, os.Rename(path, target)
 }
 
+func (a *Workspace) MoveEntry(path, dir string) (FileEntry, error) {
+	a.saveMu.Lock()
+	defer a.saveMu.Unlock()
+	path, dir = filepath.Clean(path), filepath.Clean(dir)
+	if !a.contains(path) || strings.EqualFold(path, a.root) || !a.contains(dir) {
+		return FileEntry{}, errors.New("item or destination is outside the open workspace")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return FileEntry{}, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || (!info.IsDir() && (!info.Mode().IsRegular() || !isDocument(path))) {
+		return FileEntry{}, errors.New("only folders and regular Excalidraw or Markdown files can be moved")
+	}
+	if destination, err := os.Stat(dir); err != nil || !destination.IsDir() {
+		return FileEntry{}, errors.New("destination folder no longer exists")
+	}
+	if info.IsDir() {
+		rel, err := filepath.Rel(path, dir)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return FileEntry{}, errors.New("a folder cannot be moved into itself or its descendants")
+		}
+	}
+	target := filepath.Join(dir, filepath.Base(path))
+	entry := FileEntry{Name: filepath.Base(target), Path: target, IsDir: info.IsDir()}
+	if strings.EqualFold(path, target) {
+		return entry, nil
+	}
+	if _, err := os.Lstat(target); err == nil {
+		return FileEntry{}, errors.New("an item with that name already exists")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return FileEntry{}, err
+	}
+	return entry, os.Rename(path, target)
+}
+
 func (a *Workspace) DeleteEntry(path string) error {
 	path = filepath.Clean(path)
 	if !a.contains(path) || strings.EqualFold(path, a.root) {

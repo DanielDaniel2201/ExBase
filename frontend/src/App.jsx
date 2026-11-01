@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { PanelLeftClose, PanelLeftOpen, PencilRuler, Settings, X } from "lucide-react";
 import { CaptureUpdateAction, Excalidraw, restore, serializeAsJSON } from "@excalidraw/excalidraw";
 import {
-  ChooseFolder, ConfirmClose, CreateDocument, CreateMarkdown, CreateFolder, DeleteEntry, OpenDocument, ReadDirectory, Rename, Save, SetCloseGuard, SwitchFolder, Workspaces, LoadGeneralSettings,
+  ChooseFolder, ConfirmClose, CreateDocument, CreateMarkdown, CreateFolder, DeleteEntry, MoveEntry, OpenDocument, ReadDirectory, Rename, Save, SetCloseGuard, SwitchFolder, Workspaces, LoadGeneralSettings,
 } from "../wailsjs/go/main/App";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import { FileTree } from "./workspace/FileTree";
@@ -205,7 +205,7 @@ export default function App() {
     }
   }
 
-  function activateDocument(file) {
+  function activateDocument(file, autoFocus = false) {
     clearTimeout(autosaveTimer.current);
     const markdown = isMarkdown(file.path);
     const scene = markdown ? null : restore(parseScene(file.data), null, null, { repairBindings: true });
@@ -218,7 +218,7 @@ export default function App() {
     canvasRef.current = null;
     setSlidesOpen(false);
     setReplayOpen(false);
-    const next = { path: file.path, key: ++documentGeneration.current, persistence, ...(markdown ? { content: file.data } : { scene }) };
+    const next = { path: file.path, key: ++documentGeneration.current, persistence, autoFocus, ...(markdown ? { content: file.data } : { scene }) };
     documentRef.current = next;
     setDoc(next);
   }
@@ -252,7 +252,7 @@ export default function App() {
       await save();
       const file = await (markdown ? CreateMarkdown(dir) : CreateDocument(dir));
       await refreshTree(dir);
-      activateDocument(file);
+      activateDocument(file, markdown);
       setSelectedEntry({ name: basename(file.path), path: file.path, isDir: false });
       setEditingPath(markdown ? null : file.path);
       setStatus("");
@@ -302,6 +302,29 @@ export default function App() {
     }
   }
 
+  async function moveEntry(path, dir) {
+    if (!beginFileOperation()) return;
+    setContextMenu(null);
+    try {
+      const containsCurrent = isSameOrChild(doc?.path, path);
+      if (containsCurrent) await save();
+      const moved = await MoveEntry(path, dir);
+      if (containsCurrent) {
+        const file = await OpenDocument(moved.path + doc.path.slice(path.length));
+        activateDocument(file);
+      }
+      setSelectedEntry(moved);
+      setEditingPath(null);
+      await refreshTree(dir);
+      setStatus("");
+    } catch (error) {
+      setStatus(String(error));
+      window.alert(`Could not move the item.\n${error}`);
+    } finally {
+      endFileOperation();
+    }
+  }
+
   function showContextMenu(event, entry = null) {
     if (lockedRef.current) { event.preventDefault(); return; }
     event.preventDefault();
@@ -339,6 +362,7 @@ export default function App() {
       if (deletesCurrent && isMarkdown(doc.path)) scheduleSave(doc, markdownText.current);
       else if (deletesCurrent && api) autosave(api.getSceneElements(), api.getAppState(), api.getFiles());
       setStatus(String(error));
+      window.alert(`Could not delete "${entry.name}".\n${error}`);
     } finally {
       endFileOperation();
     }
@@ -500,6 +524,7 @@ export default function App() {
           onError={setStatus}
           onMenu={showContextMenu}
           onRename={renameEntry}
+          onMove={moveEntry}
           onCancelRename={() => setEditingPath(null)}
           refreshKey={refreshKey}
           revealPath={revealPath}
@@ -542,7 +567,7 @@ export default function App() {
     <section className="canvas" aria-busy={fileBusy} inert={slidesOpen || fileBusy ? "" : undefined}>
       {doc
         ? isMarkdown(doc.path)
-          ? <MarkdownEditor key={`markdown:${doc.key}`} content={doc.content} onChange={changeMarkdown} onSave={saveNow} error={markdownError} />
+          ? <MarkdownEditor key={`markdown:${doc.key}`} content={doc.content} autoFocus={doc.autoFocus} onChange={changeMarkdown} onSave={saveNow} error={markdownError} />
           : <Excalidraw key={`canvas:${doc.key}`} initialData={{ ...doc.scene, scrollToContent: true }} viewModeEnabled={slidesOpen} excalidrawAPI={setApi} onChange={autosave} />
         : <div className="blank" onDoubleClick={() => createDocument()}><p>Select an <PencilRuler className="file-icon" aria-hidden="true" /> Excalidraw or Markdown file from the sidebar.<br />Right-click the sidebar to create a file.</p></div>}
       {doc && !isMarkdown(doc.path) && <CanvasChat ref={chat} key={`chat:${doc.key}`} doc={doc} api={api} aiEnabled={!!generalSettings && generalSettings.aiEnabled !== false} aiPreview={aiPreview} slidesEnabled={generalSettings?.slidesEnabled} onSlides={() => setSlidesOpen(true)} onReplay={() => setReplayOpen(true)} onSettings={() => { if (!lockedRef.current) setSettingsOpen(true); }} recordingEnabled={generalSettings?.recordingEnabled} recording={recording} onRecord={handleRecordClick} onStopRecording={stopRecording} />}

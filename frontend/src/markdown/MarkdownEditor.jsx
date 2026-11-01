@@ -24,7 +24,7 @@ const extensions = [
   Markdown.configure({ markedOptions: { gfm: true } }),
 ];
 
-export function MarkdownEditor({ content, onChange, onSave, error }) {
+export function MarkdownEditor({ content, autoFocus = false, onChange, onSave, error }) {
   const [headings, setHeadings] = useState([]);
   const [activeHeading, setActiveHeading] = useState(null);
   const [outlineOpen, setOutlineOpen] = useState(true);
@@ -34,7 +34,7 @@ export function MarkdownEditor({ content, onChange, onSave, error }) {
     extensions,
     content,
     contentType: "markdown",
-    autofocus: content === "" ? "start" : false,
+    autofocus: autoFocus ? "start" : false,
     shouldRerenderOnTransaction: false,
     onUpdate: ({ editor }) => onChange(editor.getMarkdown()),
     editorProps: {

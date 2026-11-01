@@ -17,9 +17,9 @@ const path = require('node:path');
         [root + '\\Welcome.md', '# Welcome\n\nA **Markdown** note.'],
         [root + '\\Drawing.excalidraw', JSON.stringify({ type: 'excalidraw', version: 2, elements: [], appState: {}, files: {} })],
       ]);
-      const dirs = new Set([root, root + '\\Notes']);
+      const dirs = new Set([root, root + '\\Notes', root + '\\Inbox']);
       const listeners = new Map();
-      window.check = { files, dirs, listeners, saves: [], failSave: false, delay: 0, closed: 0, openedURLs: [] };
+      window.check = { files, dirs, listeners, saves: [], moves: [], failSave: false, delay: 0, closed: 0, openedURLs: [] };
       const base = p => p.split('\\').pop();
       const parent = p => p.slice(0, p.lastIndexOf('\\'));
       const entry = (p, isDir = false) => ({ path: p, name: base(p), isDir });
@@ -27,6 +27,14 @@ const path = require('node:path');
         let p = dir + '\\Untitled' + ext;
         for (let i = 2; files.has(p); i++) p = dir + '\\Untitled ' + i + ext;
         files.set(p, ''); return { path: p, data: '', version: '' };
+      };
+      const relocate = (p, target) => {
+        const isDir = dirs.has(p);
+        if (p === target) return entry(target, isDir);
+        if (files.has(target) || dirs.has(target)) throw Error('Name already exists');
+        for (const old of [...files.keys()]) if (old === p || old.startsWith(p + '\\')) { files.set(target + old.slice(p.length), files.get(old)); files.delete(old); }
+        for (const old of [...dirs]) if (old === p || old.startsWith(p + '\\')) { dirs.add(target + old.slice(p.length)); dirs.delete(old); }
+        return entry(target, isDir);
       };
       window.go = { main: { App: {
         Workspaces: async () => ({ current: root, folders: [root] }),
@@ -36,13 +44,17 @@ const path = require('node:path');
         Rename: async (p, name) => {
           const isDir = dirs.has(p), ext = /\.[^.]+$/.exec(p)?.[0];
           if (!isDir && !name.toLowerCase().endsWith(ext.toLowerCase())) name += ext;
-          const target = parent(p) + '\\' + name;
-          if (files.has(target) || dirs.has(target)) throw Error('Name already exists');
-          for (const old of [...files.keys()]) if (old === p || old.startsWith(p + '\\')) { files.set(target + old.slice(p.length), files.get(old)); files.delete(old); }
-          for (const old of [...dirs]) if (old === p || old.startsWith(p + '\\')) { dirs.add(target + old.slice(p.length)); dirs.delete(old); }
-          return entry(target, isDir);
+          return relocate(p, parent(p) + '\\' + name);
         },
-        DeleteEntry: async p => { for (const old of [...files.keys()]) if (old === p || old.startsWith(p + '\\')) files.delete(old); },
+        MoveEntry: async (p, dir) => {
+          window.check.moves.push({ p, dir });
+          if (dirs.has(p) && (p === dir || dir.startsWith(p + '\\'))) throw Error('Cannot move a folder into itself');
+          return relocate(p, dir + '\\' + base(p));
+        },
+        DeleteEntry: async p => {
+          for (const old of [...files.keys()]) if (old === p || old.startsWith(p + '\\')) files.delete(old);
+          for (const old of [...dirs]) if (old === p || old.startsWith(p + '\\')) dirs.delete(old);
+        },
         Save: async (p, data, version) => {
           window.check.saves.push({ p, data });
           if (window.check.delay) await new Promise(resolve => setTimeout(resolve, window.check.delay));
@@ -288,11 +300,91 @@ const path = require('node:path');
     assert.equal(await page.evaluate(() => window.check.closed), 1);
     assert.equal((await page.evaluate(() => window.check.files.get('D:\\check\\Archive\\\u5b50\u7b14\u8bb0.md'))).trim(), '# Keep unsaved content');
     assert.equal(await page.getByRole('alert').count(), 0);
+
+    // Dragging a file or its parent folder saves edits and retargets subsequent saves.
+    const treeRow = p => page.getByRole('button').and(page.getByTitle(p, { exact: true }));
+    const root = 'D:\\check';
+    const noteName = '\u5b50\u7b14\u8bb0.md';
+    await treeRow(root + '\\Archive').click();
+    await source.fill('Before file move');
+    await treeRow(root + '\\Archive\\' + noteName).dragTo(treeRow(root + '\\Inbox'));
+    await page.waitForFunction(p => window.check.files.get(p)?.includes('Before file move'), root + '\\Inbox\\' + noteName);
+    await treeRow(root + '\\Inbox\\' + noteName).waitFor();
+    assert.equal(await page.evaluate(p => window.check.files.has(p), root + '\\Archive\\' + noteName), false);
+    assert.equal(await source.textContent(), 'Before file move');
+    await source.fill('Before folder move');
+    await treeRow(root + '\\Inbox').dragTo(treeRow(root + '\\Archive'));
+    const movedNote = root + '\\Archive\\Inbox\\' + noteName;
+    await page.waitForFunction(p => window.check.files.get(p)?.includes('Before folder move'), movedNote);
+    assert.equal(await page.evaluate(p => window.check.dirs.has(p), root + '\\Inbox'), false);
+    await treeRow(root + '\\Archive\\Inbox').click();
+    await treeRow(movedNote).waitFor();
+    await source.fill('After folder move'); await source.press('Control+s');
+    await page.waitForFunction(p => window.check.files.get(p)?.includes('After folder move'), movedNote);
+    await source.press('Home'); await source.press('Delete');
+    assert.equal(await page.evaluate(p => window.check.files.has(p), movedNote), true, 'Delete in the editor only edits text');
+
+    // Save errors stop a drag before the filesystem move.
+    await page.evaluate(() => { window.check.failSave = true; });
+    await source.fill('Unsaved before rejected move');
+    await treeRow(movedNote).dragTo(treeRow(root + '\\Archive'));
+    await page.getByRole('alert').filter({ hasText: 'Disk is full' }).waitFor();
+    assert.equal(await page.evaluate(() => window.check.moves.length), 2);
+    assert.equal(await page.evaluate(p => window.check.files.has(p), movedNote), true);
+    await page.evaluate(() => { window.check.failSave = false; });
+    await source.press('Control+s');
+    await page.getByRole('alert').waitFor({ state: 'detached' });
+
+    // Invalid folder drops and name collisions preserve both sides.
+    await treeRow(root + '\\Archive').dragTo(treeRow(root + '\\Archive\\Inbox'));
+    await page.waitForFunction(() => window.check.moves.length === 3);
+    assert.equal(await page.evaluate(p => window.check.files.has(p), movedNote), true);
+    await page.evaluate(() => window.check.files.set('D:\\check\\Archive\\Drawing.excalidraw', 'existing drawing'));
+    await treeRow(root + '\\Drawing.excalidraw').dragTo(treeRow(root + '\\Archive'));
+    await page.waitForFunction(() => window.check.moves.length === 4);
+    assert.equal(await page.evaluate(() => window.check.files.get('D:\\check\\Archive\\Drawing.excalidraw')), 'existing drawing');
+    assert.equal(await page.evaluate(() => window.check.files.has('D:\\check\\Drawing.excalidraw')), true);
+
+    // A file stays keyboard-selected after opening, including an empty Markdown document.
+    await treeRow(movedNote).click();
+    await page.waitForFunction(p => document.activeElement?.title === p, movedNote);
+    await page.keyboard.press('Delete');
+    await treeRow(movedNote).waitFor({ state: 'detached' });
+    assert.equal(await page.evaluate(p => window.check.files.has(p), movedNote), false);
+    assert.equal(await source.count(), 0);
+    await menu('Archive', 'New Markdown File');
+    await page.waitForFunction(() => document.activeElement?.matches('.markdown-prose'));
+    await treeRow(root + '\\Archive\\Untitled.md').click();
+    await page.waitForFunction(() => document.activeElement?.title === 'D:\\check\\Archive\\Untitled.md');
+    await page.keyboard.press('Delete');
+    await treeRow(root + '\\Archive\\Untitled.md').waitFor({ state: 'detached' });
+
+    await treeRow(root + '\\Drawing.excalidraw').click({ button: 'right' });
+    await page.getByRole('button', { name: 'Rename', exact: true }).click();
+    const renameInput = page.locator('.tree-name-input');
+    await renameInput.press('Home'); await renameInput.press('Delete');
+    assert.equal(await page.evaluate(() => window.check.files.has('D:\\check\\Drawing.excalidraw')), true, 'Delete during rename only edits the name');
+    await renameInput.press('Escape');
+    await treeRow(root + '\\Drawing.excalidraw').click();
+    await page.waitForFunction(() => document.activeElement?.title === 'D:\\check\\Drawing.excalidraw');
+    await page.keyboard.press('Delete');
+    await treeRow(root + '\\Drawing.excalidraw').waitFor({ state: 'detached' });
+    assert.equal(await page.locator('.excalidraw').count(), 0);
+
+    await treeRow(root + '\\Archive').click();
+    await page.keyboard.press('Delete'); // The default dialog handler cancels.
+    assert.equal(await treeRow(root + '\\Archive').count(), 1);
+    page.removeListener('dialog', dismissDialog);
+    page.once('dialog', dialog => dialog.accept());
+    await page.keyboard.press('Delete');
+    await treeRow(root + '\\Archive').waitFor({ state: 'detached' });
+    assert.equal(await page.evaluate(() => [...window.check.files.keys()].some(p => p.startsWith('D:\\check\\Archive\\'))), false);
+
     for (const width of [800, 1280]) {
       await page.setViewportSize({ width, height: 800 });
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
     }
     assert.deepEqual(errors, []);
-    console.log('Markdown WYSIWYG checks passed: direct editing, shortcuts, round-trip, undo, composition, sanitization, CRUD, save ordering and close/retry.');
+    console.log('Markdown and workspace checks passed: editing, CRUD, save safety, Delete keyboard selection, file/folder drag moves, collisions and failed saves.');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

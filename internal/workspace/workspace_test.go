@@ -248,6 +248,103 @@ func TestMarkdownLifecycle(t *testing.T) {
 	}
 }
 
+func TestMoveEntry(t *testing.T) {
+	root := t.TempDir()
+	app := New(root)
+	destination, err := app.CreateFolder(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, extension := range []string{".md", ".markdown", ".excalidraw"} {
+		path := filepath.Join(root, "note"+extension)
+		if err := os.WriteFile(path, []byte("content"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		moved, err := app.MoveEntry(path, destination.Path)
+		if err != nil || moved.Path != filepath.Join(destination.Path, filepath.Base(path)) || moved.IsDir {
+			t.Fatalf("unexpected moved file: %#v, %v", moved, err)
+		}
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatal("old file path still exists")
+		}
+		opened, err := app.OpenDocument(moved.Path)
+		if err != nil || opened.Data != "content" {
+			t.Fatalf("moved content lost: %#v, %v", opened, err)
+		}
+		if _, err := app.Save(moved.Path, "edited after move", opened.Version); err != nil {
+			t.Fatal(err)
+		}
+		if same, err := app.MoveEntry(moved.Path, destination.Path); err != nil || same != moved {
+			t.Fatalf("moving to the current parent should be a no-op: %#v, %v", same, err)
+		}
+	}
+	folder, err := app.CreateFolder(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(folder.Path, "Nested")
+	if err := os.Mkdir(nested, 0755); err != nil {
+		t.Fatal(err)
+	}
+	note, err := app.CreateMarkdown(nested)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved, err := app.MoveEntry(folder.Path, destination.Path)
+	if err != nil || !moved.IsDir {
+		t.Fatalf("folder move failed: %#v, %v", moved, err)
+	}
+	if _, err := app.OpenDocument(filepath.Join(moved.Path, "Nested", filepath.Base(note.Path))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(folder.Path); !os.IsNotExist(err) {
+		t.Fatal("old folder path still exists")
+	}
+}
+
+func TestMoveEntryRejectsInvalidDestinations(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	app := New(root)
+	source, destination := filepath.Join(root, "Source"), filepath.Join(root, "Destination")
+	nested := filepath.Join(source, "Nested")
+	for _, dir := range []string{source, nested, destination} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	note := filepath.Join(source, "note.md")
+	collision := filepath.Join(destination, "note.md")
+	ignored := filepath.Join(root, "ignored.txt")
+	for path, data := range map[string]string{note: "source", collision: "destination", ignored: "ignored"} {
+		if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, test := range []struct{ name, path, dir string }{
+		{"collision", note, destination},
+		{"self", source, source},
+		{"descendant", source, nested},
+		{"workspace root", root, destination},
+		{"outside destination", note, outside},
+		{"outside source", outside, destination},
+		{"unsupported file", ignored, destination},
+		{"destination is a file", note, collision},
+		{"missing destination", note, filepath.Join(root, "Missing")},
+		{"missing source", filepath.Join(root, "Missing.md"), destination},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := app.MoveEntry(test.path, test.dir); err == nil {
+				t.Fatal("invalid move was accepted")
+			}
+		})
+	}
+	for path, expected := range map[string]string{note: "source", collision: "destination", ignored: "ignored"} {
+		if data, err := os.ReadFile(path); err != nil || string(data) != expected {
+			t.Fatalf("rejected move changed %q: %q, %v", path, data, err)
+		}
+	}
+}
+
 func TestWorkspaceRejectsLinkedDocuments(t *testing.T) {
 	root, outside := t.TempDir(), t.TempDir()
 	app := New(root)
@@ -267,5 +364,15 @@ func TestWorkspaceRejectsLinkedDocuments(t *testing.T) {
 	}
 	if _, err := app.Save(filepath.Join(link, "private.md"), "bad", ""); err == nil {
 		t.Fatal("file was saved through a link outside the workspace")
+	}
+	if _, err := app.MoveEntry(filepath.Join(link, "private.md"), root); err == nil {
+		t.Fatal("file was moved through a link outside the workspace")
+	}
+	note, err := app.CreateMarkdown(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.MoveEntry(note.Path, link); err == nil {
+		t.Fatal("file was moved to a link outside the workspace")
 	}
 }
